@@ -1,0 +1,179 @@
+# 日程（Android V1 · 第 1 批）
+
+Android V1 第一个可验证垂直切片：**新建事件 → 本地保存 → 日视图显示 → 重启后仍在**。
+契约依据 PRD-02 v0.9（事件模型 / 时区 / RRULE / fingerprint v1）与 PRD-06 v0.8（最小布局规格）。
+
+| 项 | 值 |
+| --- | --- |
+| 语言 | Kotlin 2.0.21 |
+| 构建 | Gradle 8.9 + AGP 8.7.2 |
+| minSdk / targetSdk / compileSdk | 26 / 35 / 35 |
+| 模块 | 单模块 `:app` |
+| 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 |
+| UI | View 体系（AppCompat + Material 3），无 Compose |
+| 测试 | JUnit + Robolectric 4.14.1（63 个用例） |
+
+## 目录
+
+```
+app/src/main/java/com/zzq/calendar/
+├── AppGraph.kt                 依赖装配（仓库 / 调度器，测试可替换）
+├── model/
+│   ├── Models.kt               EventMaster / EventException / EventInstance / InstanceKey
+│   ├── TimeZones.kt            墙钟 ↔ 绝对时刻、TZID 解析、DST 行为
+│   ├── RRule.kt                RRULE 解析与支持度标记
+│   ├── RRuleExpander.kt        按窗口展开、EXDATE/RDATE、COUNT/UNTIL/WKST
+│   └── FingerprintV1.kt        fingerprint v1 规范化 + SHA-256
+├── data/
+│   ├── CalendarDbHelper.kt     schema v1（events / event_exceptions）
+│   ├── EventStore.kt           读写与映射（事务）
+│   ├── EventRepository.kt      仓库层、日视图聚合、校验
+│   └── RRuleBuilder.kt         编辑器预设 → RRULE 原文
+└── ui/
+    ├── MainActivity.kt         日视图（列表 + 时间轴）
+    ├── DayTimelineView.kt      24h 时间轴自绘、重叠分列、点击区扩展
+    ├── EventEditActivity.kt    新建 / 编辑（全天、时区、重复）
+    └── UiFormat.kt             中文日期与时间格式
+```
+
+## 构建与测试
+
+需要 JDK 17 与 Android SDK 35（`platforms;android-35`、`build-tools;35.0.0`）。
+
+```bash
+export JAVA_HOME=/path/to/jdk17
+export ANDROID_HOME=/path/to/android-sdk
+./gradlew :app:assembleDebug :app:testDebugUnitTest
+```
+
+APK：`app/build/outputs/apk/debug/app-debug.apk`
+
+Robolectric 首次运行会下载 `android-all-instrumented`。离线或受限环境可设置：
+
+```bash
+export ROBOLECTRIC_DEPS=/dir/with/android-all-instrumented-15-robolectric-12650502-i7.jar
+export ROBOLECTRIC_HOME=/short/writable/dir
+```
+
+（`java.io.tmpdir` 会被指向 `ROBOLECTRIC_HOME/tmp`，避免 Windows 长路径导致 SQLite 打不开。）
+
+## 数据模型（schema v1）
+
+`events`（主事件）
+
+| 字段 | 说明 |
+| --- | --- |
+| `id`, `uid` | 本地主键 / 事件 UID（实例键成员） |
+| `calendar_id`, `source_type`, `source_id` | 归属与来源，本批固定 `cal-local` / `local` |
+| `title`, `description`, `location`, `url` | 文本字段 |
+| `all_day` | 0/1；全天事件墙钟固定为 00:00:00，`dtend_wall` 为**排他**结束日 |
+| `dtstart_wall`, `dtend_wall` | `YYYY-MM-DDTHH:MM:SS`，无时区后缀 |
+| `tzid` | IANA 时区；全天事件存展示时区 |
+| `rrule_raw` | RRULE 原文，只解析不重写 |
+| `exdate_list`, `rdate_list` | 换行分隔的墙钟值（规范化后排序） |
+| `valarm_list` | 换行分隔 `trigger_type,offset,tzid` |
+| `tombstone`, `rev`, `fingerprint` | 墓碑、版本、写入时计算的指纹 |
+| `tzdata_version`, `created_at`, `updated_at` | 展开上下文与时间戳 |
+
+`event_exceptions`（实例例外）
+
+- 键：`UNIQUE(event_id, recurrence_id_wall, tzid)`，删除主事件级联删除。
+- `status`：`modified` / `cancelled`；`cancelled` 不出现在视图。
+- 覆盖字段：`title`, `all_day`, `dtstart_wall`, `dtend_wall`, `description`, `location`。
+- 例外定位遵循 PRD：`(UID, RECURRENCE-ID 墙钟 + TZID)`；`tzdata_version` 不是键成员。
+
+所有读写都在 `Dispatchers.IO` 上执行（`EventRepository`），主线程只做渲染，避免 ANR。
+
+## fingerprint v1
+
+`FingerprintV1.canonicalJson` 按 PRD-02 §3.3 第 4 条实现：
+
+- 字段：`all_day, calendar_id, dtstart_wall, dtend_wall, tzid, exdate[], rdate[], rrule_raw, exceptions[], title, tombstone, valarm[]`
+- 键名字典序、UTF-8、分隔符 `,`/`:`、无空白、`ensure_ascii=false`；集合先排序。
+- SHA-256 小写十六进制。
+- 3 组冻结向量逐字节一致，见 `app/src/test/java/com/zzq/calendar/model/FingerprintV1Test.kt`。
+
+实现细节与一处 **PRD 文本与向量不一致** 见 `docs/contract-notes.md`（`valarm` 排序）。
+
+## RRULE 支持矩阵
+
+| 参数 | 状态 | 说明 |
+| --- | --- | --- |
+| `FREQ` DAILY / WEEKLY / MONTHLY / YEARLY | 支持 | |
+| `INTERVAL` | 支持 | |
+| `BYDAY`（含 `2TU` / `-1FR` 序数） | 支持 | |
+| `BYMONTHDAY`（含负数） | 支持 | 月末不存在日期跳过 |
+| `COUNT` / `UNTIL` | 支持 | 二者同时出现时以 `COUNT` 为准并记录 warning |
+| `WKST` | 支持 | 影响 WEEKLY + INTERVAL > 1 的周界 |
+| `EXDATE` | 支持 | 先按 COUNT 生成再剔除（RFC 语义） |
+| `RDATE` | 只读 | 追加展示，不参与 COUNT |
+| `BYSETPOS` / `BYMONTH` / 其他 | 只读 | 原文保留，编辑器锁定重复规则，禁止静默改写 |
+
+YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月份解释（RFC 5545 §3.3.10）。
+20 条基线用例见 `RRuleExpanderTest`（case01 ~ case20），另含 EXDATE、RDATE、无限规则窗口裁剪等 7 条补充用例。
+
+## 时区与 DST
+
+- 存墙钟 + TZID，展开时换算绝对时刻；显示按事件 TZID，不随设备时区漂移。
+- 春季不存在的本地时刻：`LocalDateTime.atZone` 顺延到跳变后的第一个有效时刻。
+- 秋季重复的本地时刻：取第一次（DST 侧）。
+- 纽约每周一 09:00 跨 2027-03-14 / 2027-11-07 的用例见 `DstRuleTest`。
+
+## 日视图与无障碍
+
+- 默认布局：顶部日期 / 时区 → 全天区 → 当天事件列表 → 24 小时时间轴。
+- 时间轴 1 小时 = 48dp；事件条最小高度 20dp；事件条点击区扩展到 44dp（视觉不夸大时长）。
+- 重叠事件按列并排；当前时间线仅在当天显示。
+- 所有按钮 / 列表行 / 全天行最小 48dp；字号 200% 时列表行与按钮随内容增高，不截断。
+- 深浅色配色对（正文、次要文字、主按钮、事件条、全天条、小时刻度）对比度均 ≥ 4.5:1，由 `AccessibilityTest` 断言。
+- 200% 字号下时间轴刻度列宽按文字实际宽度自适应。
+
+见 `docs/screenshots/day-view.png` 与 `docs/screenshots/day-view-200.png`。
+
+## 本批验收对照
+
+| 验收项 | 状态 | 证据 |
+| --- | --- | --- |
+| 3 组 fingerprint 向量一致 | 通过 | `FingerprintV1Test`（逐字节 + 哈希） |
+| 20 条 RRULE 用例展开一致 | 通过 | `RRuleExpanderTest` case01–case20（期望值由 python-dateutil 交叉生成） |
+| DST 春 / 秋不漂移 | 通过 | `DstRuleTest`（含绝对时刻断言） |
+| 新建 → 杀进程 → 重开仍显示 | 通过（JVM/Robolectric 级） | `EventPersistenceTest` 关闭并重开数据库；`MainActivityTest` 重建 Activity |
+| 点击区 ≥ 44dp；200% 不破 | 通过 | `DayTimelineViewTest`、`AccessibilityTest`、200% 截图 |
+| 冷启动无崩溃；读写无 ANR | 部分验证 | 63 个测试全绿、Activity 启动无异常；真实设备冷启动 / ANR 需 QA 用 APK 复测 |
+
+## 已知限制 / 待确认
+
+1. 无真机或模拟器可用：未执行真实进程 kill、冷启动耗时与真机 ANR 观测。
+2. 性能按垂直切片处理：日视图加载全部主事件后在内存展开；未做大数据量索引与分页（PRD 5,000 事件指标待后续批次）。
+3. 不分实例编辑 / 删除（「本次 / 本次及以后 / 全部」未实现），符合本批范围。
+4. 复杂 RRULE（EXDATE / RDATE / BYSETPOS / INTERVAL>1 / 多 BYDAY / UNTIL）编辑时锁定重复段，只改标题与时间。
+5. 全天事件指纹包含展示 TZID，跨设备展示时区不同会得到不同指纹，见契约问题 Q3。
+6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`，需 PRD 侧确认后再进入导入 / 同步批次。
+
+## 仓库
+
+远端 `git@github.com:lwhlove1221/zzq-calendar-android.git`（私有），默认分支 `main`。本仓库只放 Android 客户端；PRD 与评估文档仍在 Multica issue 中维护。
+
+## 真机回归（2026-11-23）
+
+| 项 | 值 |
+| --- | --- |
+| 设备 | Xiaomi 24129PN74C（`dada`） |
+| Android | 17（API 37） |
+| ROM | HyperOS `OS4.0.4.0.XOCCNXM`（V816） |
+| 安装包 | `app-debug.apk`，versionName 0.1.0 / versionCode 1 |
+
+结果：
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 新建事件 → 杀进程 → 重开 | 通过 | 新建 `ZZQ37devicetest`、`ZZQ37second`，`am force-stop` 后冷启动仍在日视图 |
+| 冷启动 3 次 | 通过 | `am start -W` TotalTime：211 / 198 / 207 ms（另测 229 / 219 / 205 / 212 ms） |
+| 200% 字号 | 部分通过 | 列表/时间轴不截断、按钮可点；**顶栏日期标题与状态栏重叠**，编辑页「新建日程」同样重叠，日期按钮文字换行后溢出胶囊背景 |
+| 深色模式 | 通过 | 深色背景 + 浅色文字，对比度正常 |
+| logcat 崩溃 / ANR | 通过 | 全流程后 `logcat -b crash` 为空，logcat 无 `FATAL` / `ANR`，dropbox 无本应用记录 |
+
+已知问题（真机发现，待后续批次修）：
+
+1. 日视图与编辑页顶栏未处理状态栏 inset：100% 与 200% 字号下日期标题都会压在系统状态栏上（浅色/深色均复现）。
+2. 200% 字号下开始/结束日期按钮内文字换行后超出胶囊背景。

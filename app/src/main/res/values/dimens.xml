@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="touch_target_min">48dp</dimen>
+    <dimen name="event_bar_min_height">20dp</dimen>
+    <dimen name="hour_height">48dp</dimen>
+    <dimen name="screen_padding">16dp</dimen>
+    <dimen name="spacing_small">8dp</dimen>
+    <dimen name="spacing_medium">12dp</dimen>
+</resources>

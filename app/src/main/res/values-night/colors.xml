@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="surface">#121212</color>
+    <color name="on_surface">#EDEDED</color>
+    <color name="on_surface_variant">#C9C9C9</color>
+    <color name="primary">#9BC1F0</color>
+    <color name="on_primary">#0A2540</color>
+    <color name="event_blue">#2A5A96</color>
+    <color name="on_event_blue">#FFFFFF</color>
+    <color name="all_day_bg">#24384F</color>
+    <color name="on_all_day_bg">#D6E6F8</color>
+    <color name="grid_line">#2E2E2E</color>
+    <color name="hour_text">#BDBDBD</color>
+    <color name="current_time">#FF8276</color>
+    <color name="fab_bg">#9BC1F0</color>
+    <color name="on_fab_bg">#0A2540</color>
+    <color name="error">#FFB4AB</color>
+</resources>

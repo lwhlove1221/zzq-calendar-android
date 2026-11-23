@@ -1,0 +1,9 @@
+*.iml
+.gradle/
+.robolectric-home/
+.idea/
+build/
+local.properties
+captures/
+*.apk
+*.aab
