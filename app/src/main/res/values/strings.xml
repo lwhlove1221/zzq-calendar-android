@@ -52,4 +52,21 @@
     <string name="export_empty">没有可导出的事件</string>
     <string name="export_ics_name">日程-%1$s.ics</string>
     <string name="export_json_name">日程备份-%1$s.json</string>
+
+    <string name="import_ics">导入 .ics</string>
+    <string name="import_preview_title">导入预览</string>
+    <string name="import_preview_summary">共 %1$d 条：新建 %2$d，重复跳过 %3$d，冲突 %4$d，失败 %5$d</string>
+    <string name="import_target_calendar">目标日历：%1$s</string>
+    <string name="import_default_calendar">本地日历</string>
+    <string name="import_line_failure">第 %1$d 行：%2$s</string>
+    <string name="import_line_conflict">冲突：%1$s（第 %2$d 行，默认不覆盖）</string>
+    <string name="import_more_failures">另有 %1$d 条失败未显示</string>
+    <string name="import_warnings">说明：%1$s</string>
+    <string name="import_confirm">确认导入</string>
+    <string name="import_done">导入完成：新建 %1$d，跳过 %2$d，冲突 %3$d，失败 %4$d</string>
+    <string name="import_partial_suffix">\n（部分成功：失败项未写入）</string>
+    <string name="import_failed">导入失败：%1$s</string>
+    <string name="import_empty">没有可导入的事件</string>
+    <string name="import_read_failed">读取文件失败，请重试</string>
+    <string name="import_interrupted">上次导入未完成，已丢弃未提交的数据</string>
 </resources>

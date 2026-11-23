@@ -70,14 +70,30 @@ class CalendarDbHelper(
             """.trimIndent(),
         )
         db.execSQL("CREATE INDEX idx_exceptions_event ON event_exceptions(event_id)")
+        createStaging(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        throw IllegalStateException("Unsupported schema upgrade $oldVersion -> $newVersion")
+        if (oldVersion < 2) createStaging(db)
+    }
+
+    /** Parse results live here until the single commit transaction moves them into `events`. */
+    private fun createStaging(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS import_staging (
+                batch_id TEXT NOT NULL,
+                seq INTEGER NOT NULL,
+                line INTEGER NOT NULL,
+                payload TEXT NOT NULL,
+                PRIMARY KEY(batch_id, seq)
+            )
+            """.trimIndent(),
+        )
     }
 
     companion object {
         const val DEFAULT_NAME = "calendar.db"
-        const val VERSION = 1
+        const val VERSION = 2
     }
 }

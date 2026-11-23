@@ -1,6 +1,8 @@
-# 日程（Android V1 · 第 1 批）
+# 日程（Android V1 · 第 3 批）
 
-Android V1 第一个可验证垂直切片：**新建事件 → 本地保存 → 日视图显示 → 重启后仍在**。
+第 1 批：新建事件 → 本地保存 → 日视图显示 → 重启后仍在。
+第 2 批：`.ics` 导出 + 本地备份。
+第 3 批：`.ics` 导入（解析 → 预览 → 去重 → 原子落库）。
 契约依据 PRD-02 v0.9（事件模型 / 时区 / RRULE / fingerprint v1）与 PRD-06 v0.8（最小布局规格）。
 
 | 项 | 值 |
@@ -9,9 +11,9 @@ Android V1 第一个可验证垂直切片：**新建事件 → 本地保存 → 
 | 构建 | Gradle 8.9 + AGP 8.7.2 |
 | minSdk / targetSdk / compileSdk | 26 / 35 / 35 |
 | 模块 | 单模块 `:app` |
-| 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 |
+| 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 + 导入 staging 表 |
 | UI | View 体系（AppCompat + Material 3），无 Compose |
-| 测试 | JUnit + Robolectric 4.14.1（63 个用例） |
+| 测试 | JUnit + Robolectric 4.14.1（87 个用例） |
 
 ## 目录
 
@@ -25,10 +27,16 @@ app/src/main/java/com/zzq/calendar/
 │   ├── RRuleExpander.kt        按窗口展开、EXDATE/RDATE、COUNT/UNTIL/WKST
 │   └── FingerprintV1.kt        fingerprint v1 规范化 + SHA-256
 ├── data/
-│   ├── CalendarDbHelper.kt     schema v1（events / event_exceptions）
-│   ├── EventStore.kt           读写与映射（事务）
+│   ├── CalendarDbHelper.kt     schema v2（events / event_exceptions / import_staging）
+│   ├── EventStore.kt           读写与映射（事务）、staging
 │   ├── EventRepository.kt      仓库层、日视图聚合、校验
 │   └── RRuleBuilder.kt         编辑器预设 → RRULE 原文
+├── export/
+│   ├── IcsExporter.kt          RFC 5545 导出
+│   └── JsonBackup.kt           JSON 备份清单
+├── importer/
+│   ├── IcsParser.kt            编码识别、VEVENT / TZID / 例外 / VALARM 解析
+│   └── IcsImporter.kt          预览、去重、批次规则、staging 单事务落库
 └── ui/
     ├── MainActivity.kt         日视图（列表 + 时间轴）
     ├── DayTimelineView.kt      24h 时间轴自绘、重叠分列、点击区扩展
@@ -57,7 +65,7 @@ export ROBOLECTRIC_HOME=/short/writable/dir
 
 （`java.io.tmpdir` 会被指向 `ROBOLECTRIC_HOME/tmp`，避免 Windows 长路径导致 SQLite 打不开。）
 
-## 数据模型（schema v1）
+## 数据模型（schema v2）
 
 `events`（主事件）
 
@@ -81,6 +89,12 @@ export ROBOLECTRIC_HOME=/short/writable/dir
 - `status`：`modified` / `cancelled`；`cancelled` 不出现在视图。
 - 覆盖字段：`title`, `all_day`, `dtstart_wall`, `dtend_wall`, `description`, `location`。
 - 例外定位遵循 PRD：`(UID, RECURRENCE-ID 墙钟 + TZID)`；`tzdata_version` 不是键成员。
+
+`import_staging`（导入暂存，schema v2 新增）
+
+- 字段：`batch_id, seq, line, payload`；`payload` 是原始 `VEVENT` 块（含例外），可回溯。
+- 只在用户确认后写入；正式落库在同一事务里写 `events` 并清空该批次。
+- 进程被杀 / 崩溃时事务回滚，staging 残留下次启动即丢弃，不会进入正式库。
 
 所有读写都在 `Dispatchers.IO` 上执行（`EventRepository`），主线程只做渲染，避免 ANR。
 
@@ -137,7 +151,30 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 - 例外单独输出 `VEVENT`：同 `UID` + `RECURRENCE-ID`（原开始时间），`cancelled` 例外带 `STATUS:CANCELLED`。
 - 文本转义遵循 RFC 5545（`\\` `\;` `\,` `\n`），UTF-8、CRLF、75 字节折行（按码点切分，不拆 UTF-8 字符）。
 - JSON 备份：`{schema_version, exported_at, event_count, parts[]}`；每片 ≤ 5000 条或 ≤ 20MB，片内事件字段与 PRD-02 DTO 一致（另含 `title/description/location/url` 文本字段，避免备份丢内容）。
-- 落盘走 SAF `ACTION_CREATE_DOCUMENT`，不申请存储权限；未做导入、云同步与分享。
+- 落盘走 SAF `ACTION_CREATE_DOCUMENT`，不申请存储权限。
+
+## 导入（第 3 批）
+
+- 入口：首页右上「更多 → 导入 .ics」。SAF `ACTION_OPEN_DOCUMENT`（SAF 打开文档），不申请存储权限。
+- 编码：UTF-8（含 BOM）/ GBK（GB18030）/ UTF-16 BOM；都无法严格解码时整批拒绝（`E_ENCODING`），不写库。
+- 解析：`VCALENDAR` / `VEVENT`、`TZID` / `VTIMEZONE`、`RRULE` / `EXDATE` / `RDATE` 原文、`RECURRENCE-ID` 例外（同 UID 归并到主事件）、`VALARM`（相对时长与绝对时间）。
+- 时区：TZID 无法识别但有 `VTIMEZONE` 时，按 `TZOFFSETTO` 存为固定偏移（如 `+05:30`）并在预览提示；无 `VTIMEZONE` 时按 UTC，原串不改写。
+- 预览：解析成功 / 失败条目（带行号）、重复（同 UID + 同指纹）、冲突（同 UID 内容不同，默认不覆盖）、目标日历；用户确认后才写库。
+- 批次规则（PRD-03 v0.8）：0 失败全成功；`0 < failed ≤ 5%` 部分成功（失败项带行号）；`failed > 5%` 或编码 / 文件过大等致命错误整批回滚。
+- 原子落库：先写 `import_staging`，再在单事务中迁移到 `events` / `event_exceptions` 并清空 staging；中途中断不会留下半批数据。
+- 实测：1000 条 `.ics` 导入 338ms（JVM / Robolectric，参考值）。
+
+## 第 3 批验收对照
+
+| 验收项 | 状态 | 证据 |
+| --- | --- | --- |
+| 20 条基准导入字段与源文件一致（含重复、例外、VALARM） | 通过 | `IcsParserTest.twenty baseline events keep their fields`、`IcsImportTest.baseline import keeps fields and a re-import only skips` |
+| 同一文件导入两次，第二次全部跳过 | 通过 | 同上：第二次 `created = 0`、`skipped = 20`，事件数不变 |
+| 4% 失败部分成功；6% 失败零落库 | 通过 | `IcsImportTest.four percent failures import partially and keep line numbers`、`six percent failures roll the whole batch back`（另含 5% 边界用例） |
+| 编码错误 / 超大文件 / 中途杀进程不产生半批 | 通过 | `encoding error and oversized files write nothing`、`staged batch survives nothing after restart cleanup`（事务回滚 + staging 丢弃） |
+| 1000 条 ≤ 20s | 通过 | `one thousand events import within twenty seconds`，实测 338ms |
+| `assembleDebug` 与既有 72 个单测全绿 | 通过 | 87 个测试全绿（含原有 72 个），`app-debug.apk` 构建成功 |
+| 真机导入验证 | 未执行 | `adb devices` 列表为空（无已授权设备），需连接手机并允许 USB 调试后复测 |
 
 ## 第 2 批验收对照
 
@@ -163,12 +200,13 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 
 ## 已知限制 / 待确认
 
-1. 第 2 批导出未做真机复测：adb 设备当前 `unauthorized`，需在手机上确认 USB 调试授权；第 1 批真机回归记录见文末。
+1. 第 2、3 批导出 / 导入未做真机复测：`adb devices` 当前无已授权设备，需连接手机并允许 USB 调试；第 1 批真机回归记录见文末。
 2. 性能按垂直切片处理：日视图加载全部主事件后在内存展开；未做大数据量索引与分页（PRD 5,000 事件指标待后续批次）。
 3. 不分实例编辑 / 删除（「本次 / 本次及以后 / 全部」未实现），符合本批范围。
 4. 复杂 RRULE（EXDATE / RDATE / BYSETPOS / INTERVAL>1 / 多 BYDAY / UNTIL）编辑时锁定重复段，只改标题与时间。
 5. 全天事件指纹包含展示 TZID，跨设备展示时区不同会得到不同指纹，见契约问题 Q3。
-6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`，需 PRD 侧确认后再进入导入 / 同步批次。
+6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`；导入实现中的取舍见 `docs/import-notes.md`。
+7. 导入的已知限制：`RECURRENCE-ID;RANGE=THISANDFUTURE` 按单次例外导入（未按 B 方案拆系列）；失败明细只在预览中展示，未提供导出文件；一个 `VTIMEZONE` 只取第一个 `TZOFFSETTO`。
 
 ## 仓库
 

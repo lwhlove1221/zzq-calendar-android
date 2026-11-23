@@ -15,14 +15,30 @@ data class StoredEvent(
     val fingerprint: String,
 )
 
+data class FingerprintIndex(
+    val byUid: Map<String, Set<String>>,
+    val all: Set<String>,
+)
+
+data class StagingRow(
+    val line: Int,
+    val payload: String,
+)
+
 class EventStore(private val helper: CalendarDbHelper) {
 
-    fun insert(master: EventMaster, exceptions: List<EventException> = emptyList()): StoredEvent {
+    fun insert(master: EventMaster, exceptions: List<EventException> = emptyList()): StoredEvent =
+        helper.writableDatabase.inTransaction { db -> insertWithin(db, master, exceptions) }
+
+    /** Inserts one event inside the caller's transaction; import commits a whole batch with it. */
+    fun insertWithin(
+        db: SQLiteDatabase,
+        master: EventMaster,
+        exceptions: List<EventException> = emptyList(),
+    ): StoredEvent {
         val fingerprint = FingerprintV1.sha256(master, exceptions)
-        helper.writableDatabase.inTransaction { db ->
-            db.insertOrThrow(TABLE_EVENTS, null, eventValues(master, fingerprint))
-            exceptions.forEach { db.insertOrThrow(TABLE_EXCEPTIONS, null, exceptionValues(it)) }
-        }
+        db.insertOrThrow(TABLE_EVENTS, null, eventValues(master, fingerprint))
+        exceptions.forEach { db.insertOrThrow(TABLE_EXCEPTIONS, null, exceptionValues(it)) }
         return StoredEvent(master, exceptions, fingerprint)
     }
 
@@ -69,6 +85,66 @@ class EventStore(private val helper: CalendarDbHelper) {
         }
         return result
     }
+
+    fun fingerprintIndex(): FingerprintIndex {
+        val byUid = mutableMapOf<String, MutableSet<String>>()
+        val all = mutableSetOf<String>()
+        helper.readableDatabase.rawQuery(
+            "SELECT uid, fingerprint FROM $TABLE_EVENTS WHERE tombstone = 0",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val uid = cursor.getString(0)
+                val fingerprint = cursor.getString(1)
+                byUid.getOrPut(uid) { mutableSetOf() } += fingerprint
+                all += fingerprint
+            }
+        }
+        return FingerprintIndex(byUid, all)
+    }
+
+    fun stageBatch(batchId: String, rows: List<StagingRow>) {
+        helper.writableDatabase.inTransaction { db ->
+            db.delete(TABLE_STAGING, "batch_id = ?", arrayOf(batchId))
+            rows.forEachIndexed { index, row ->
+                db.insertOrThrow(
+                    TABLE_STAGING,
+                    null,
+                    ContentValues().apply {
+                        put("batch_id", batchId)
+                        put("seq", index)
+                        put("line", row.line)
+                        put("payload", row.payload)
+                    },
+                )
+            }
+        }
+    }
+
+    fun readStaging(batchId: String): List<StagingRow> {
+        val rows = mutableListOf<StagingRow>()
+        helper.readableDatabase.rawQuery(
+            "SELECT line, payload FROM $TABLE_STAGING WHERE batch_id = ? ORDER BY seq",
+            arrayOf(batchId),
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                rows += StagingRow(cursor.getInt(0), cursor.getString(1))
+            }
+        }
+        return rows
+    }
+
+    fun deleteStaging(db: SQLiteDatabase, batchId: String) {
+        db.delete(TABLE_STAGING, "batch_id = ?", arrayOf(batchId))
+    }
+
+    /** Called at startup: an interrupted import leaves staging behind and must never reach `events`. */
+    fun clearStaging() {
+        helper.writableDatabase.inTransaction { db -> db.delete(TABLE_STAGING, null, null) }
+    }
+
+    fun hasStaging(): Boolean =
+        helper.readableDatabase.rawQuery("SELECT 1 FROM $TABLE_STAGING LIMIT 1", null).use { it.moveToFirst() }
 
     private fun loadExceptions(db: SQLiteDatabase, eventId: String): List<EventException> {
         val result = mutableListOf<EventException>()
@@ -185,11 +261,12 @@ class EventStore(private val helper: CalendarDbHelper) {
             }
         }
 
-    private inline fun SQLiteDatabase.inTransaction(block: (SQLiteDatabase) -> Unit) {
+    private inline fun <T> SQLiteDatabase.inTransaction(block: (SQLiteDatabase) -> T): T {
         beginTransaction()
         try {
-            block(this)
+            val result = block(this)
             setTransactionSuccessful()
+            return result
         } finally {
             endTransaction()
         }
@@ -211,5 +288,6 @@ class EventStore(private val helper: CalendarDbHelper) {
     companion object {
         private const val TABLE_EVENTS = "events"
         private const val TABLE_EXCEPTIONS = "event_exceptions"
+        private const val TABLE_STAGING = "import_staging"
     }
 }

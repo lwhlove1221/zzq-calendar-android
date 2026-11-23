@@ -12,6 +12,9 @@ import com.zzq.calendar.model.RRuleExpander
 import com.zzq.calendar.model.RepeatSpec
 import com.zzq.calendar.model.TimeZones
 import com.zzq.calendar.model.WallTime
+import com.zzq.calendar.importer.IcsImporter
+import com.zzq.calendar.importer.ImportOutcome
+import com.zzq.calendar.importer.ImportPreview
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -38,6 +41,7 @@ class EventRepository(
 ) {
 
     private val store = EventStore(helper)
+    private val importer by lazy { IcsImporter(helper, store) }
 
     suspend fun create(draft: EventDraft): EventMaster = withContext(ioDispatcher) {
         val now = System.currentTimeMillis()
@@ -83,6 +87,21 @@ class EventRepository(
 
     suspend fun fingerprintOf(eventId: String): String? = withContext(ioDispatcher) {
         store.findById(eventId)?.fingerprint
+    }
+
+    suspend fun previewImport(bytes: ByteArray): ImportPreview = withContext(ioDispatcher) {
+        importer.preview(bytes)
+    }
+
+    suspend fun importIcs(bytes: ByteArray): ImportOutcome = withContext(ioDispatcher) {
+        importer.import(bytes)
+    }
+
+    /** Returns true when an interrupted import left a staging batch behind. */
+    suspend fun discardStaging(): Boolean = withContext(ioDispatcher) {
+        val leftover = store.hasStaging()
+        store.clearStaging()
+        leftover
     }
 
     suspend fun loadDay(day: LocalDate, zone: ZoneId = ZoneId.systemDefault()): DayAgenda =
