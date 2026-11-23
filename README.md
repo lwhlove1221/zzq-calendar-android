@@ -130,7 +130,27 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 
 见 `docs/screenshots/day-view.png` 与 `docs/screenshots/day-view-200.png`。
 
-## 本批验收对照
+## 导出与备份（第 2 批）
+
+- `.ics` 导出：单条（编辑页「导出」）与全量（首页右上「更多 → 导出全部日程」）。标准 `VCALENDAR` / `VEVENT`，含 `UID`、`DTSTAMP`、带 `TZID` 的 `DTSTART` / `DTEND`、`RRULE` / `EXDATE` / `RDATE` 原文、`VALARM`。
+- 全天事件写 `DTSTART;VALUE=DATE` / `DTEND;VALUE=DATE`，不带 `TZID`；`DTEND` 为排他结束日。
+- 例外单独输出 `VEVENT`：同 `UID` + `RECURRENCE-ID`（原开始时间），`cancelled` 例外带 `STATUS:CANCELLED`。
+- 文本转义遵循 RFC 5545（`\\` `\;` `\,` `\n`），UTF-8、CRLF、75 字节折行（按码点切分，不拆 UTF-8 字符）。
+- JSON 备份：`{schema_version, exported_at, event_count, parts[]}`；每片 ≤ 5000 条或 ≤ 20MB，片内事件字段与 PRD-02 DTO 一致（另含 `title/description/location/url` 文本字段，避免备份丢内容）。
+- 落盘走 SAF `ACTION_CREATE_DOCUMENT`，不申请存储权限；未做导入、云同步与分享。
+
+## 第 2 批验收对照
+
+| 验收项 | 状态 | 证据 |
+| --- | --- | --- |
+| 20 条基准事件导出后解析库读回一致 | 通过 | `IcsExporterTest.twenty baseline events round-trip through biweekly`（biweekly 0.6.8） |
+| 全天事件无 TZID、日期不偏移 | 通过 | `IcsExporterTest.all-day events carry VALUE=DATE without TZID and do not shift` |
+| RRULE + EXDATE + 例外的 RECURRENCE-ID 为原开始时间 | 通过 | `IcsExporterTest.recurring event with exdate and exceptions keeps RECURRENCE-ID at original start` |
+| 1000 条导出事件数一致、分片符合 5000 / 20MB | 通过 | `JsonBackupTest`（1000 条单分片；5001 条两片；按字节分片） |
+| 真机导出到 Downloads 回读 | 未执行 | adb 设备 `10.2.9.145:5555` 处于 `unauthorized`，需在手机上确认 USB 调试授权后复测 |
+| `assembleDebug` 与既有单测全绿 | 通过 | 71 个测试全绿，`app-debug.apk` 构建成功 |
+
+## 第 1 批验收对照
 
 | 验收项 | 状态 | 证据 |
 | --- | --- | --- |
@@ -143,7 +163,7 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 
 ## 已知限制 / 待确认
 
-1. 无真机或模拟器可用：未执行真实进程 kill、冷启动耗时与真机 ANR 观测。
+1. 第 2 批导出未做真机复测：adb 设备当前 `unauthorized`，需在手机上确认 USB 调试授权；第 1 批真机回归记录见文末。
 2. 性能按垂直切片处理：日视图加载全部主事件后在内存展开；未做大数据量索引与分页（PRD 5,000 事件指标待后续批次）。
 3. 不分实例编辑 / 删除（「本次 / 本次及以后 / 全部」未实现），符合本批范围。
 4. 复杂 RRULE（EXDATE / RDATE / BYSETPOS / INTERVAL>1 / 多 BYDAY / UNTIL）编辑时锁定重复段，只改标题与时间。

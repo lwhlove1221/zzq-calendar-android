@@ -4,18 +4,21 @@ import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
 import com.zzq.calendar.data.EventDraft
 import com.zzq.calendar.data.RRuleBuilder
 import com.zzq.calendar.databinding.ActivityEventEditBinding
+import com.zzq.calendar.export.IcsExporter
 import com.zzq.calendar.model.EventMaster
 import com.zzq.calendar.model.RRule
 import com.zzq.calendar.model.RepeatSpec
@@ -24,6 +27,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -47,6 +51,10 @@ class EventEditActivity : AppCompatActivity() {
     private var originalRepeatIndex = 0
     private var originalCountText = ""
     private var saving = false
+
+    private val createIcs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
+        uri?.let { exportCurrent(it) }
+    }
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA)
@@ -73,6 +81,10 @@ class EventEditActivity : AppCompatActivity() {
         }
         binding.cancelButton.setOnClickListener { finish() }
         binding.saveButton.setOnClickListener { save() }
+        binding.exportButton.setOnClickListener {
+            val stamp = LocalDate.now(zone).toString()
+            createIcs.launch(getString(R.string.export_ics_name, stamp))
+        }
 
         val id = eventId
         if (id == null) {
@@ -202,6 +214,24 @@ class EventEditActivity : AppCompatActivity() {
             binding.seriesWarning.setText(if (ruleComplex) R.string.series_locked else R.string.series_warning)
             binding.seriesWarning.visibility = if (master.rruleRaw.isBlank()) View.GONE else View.VISIBLE
             renderTimes()
+            binding.exportButton.visibility = View.VISIBLE
+        }
+    }
+
+    private fun exportCurrent(uri: Uri) {
+        val id = eventId ?: return
+        lifecycleScope.launch(AppGraph.mainDispatcher) {
+            val written = runCatching {
+                val stored = repository.get(id) ?: error("event missing")
+                val text = IcsExporter.export(listOf(stored), Instant.now())
+                val stream = contentResolver.openOutputStream(uri) ?: error("cannot open export target")
+                stream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+            }
+            Toast.makeText(
+                this@EventEditActivity,
+                if (written.isSuccess) R.string.export_done else R.string.export_failed,
+                Toast.LENGTH_SHORT,
+            ).show()
         }
     }
 

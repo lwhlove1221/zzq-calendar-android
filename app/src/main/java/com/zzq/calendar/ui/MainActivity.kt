@@ -1,10 +1,12 @@
 package com.zzq.calendar.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -13,12 +15,16 @@ import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
 import com.zzq.calendar.databinding.ActivityMainBinding
+import com.zzq.calendar.export.IcsExporter
+import com.zzq.calendar.export.JsonBackup
 import com.zzq.calendar.model.DayAgenda
 import com.zzq.calendar.model.EventInstance
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -30,6 +36,14 @@ class MainActivity : AppCompatActivity() {
     private var loadGeneration = 0
 
     private val editLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
+
+    private val createIcs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
+        uri?.let { writeExport(it, ExportKind.ICS) }
+    }
+
+    private val createJson = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        uri?.let { writeExport(it, ExportKind.JSON) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         binding.newEventButton.setOnClickListener { openCreate(defaultStart()) }
         binding.timeline.onEventClick = { instance -> openEdit(instance.master.id) }
         binding.timeline.onEmptyClick = { local -> openCreate(local) }
+        binding.moreButton.setOnClickListener { anchor -> showExportMenu(anchor) }
     }
 
     override fun onResume() {
@@ -79,6 +94,47 @@ class MainActivity : AppCompatActivity() {
 
     private fun openEdit(eventId: String) {
         editLauncher.launch(EventEditActivity.editIntent(this, eventId))
+    }
+
+    private fun showExportMenu(anchor: View) {
+        PopupMenu(this, anchor).apply {
+            menu.add(0, MENU_EXPORT_ICS, 0, R.string.export_ics_all)
+            menu.add(0, MENU_EXPORT_JSON, 1, R.string.export_backup_all)
+            setOnMenuItemClickListener { item ->
+                val stamp = LocalDate.now(zone).toString()
+                when (item.itemId) {
+                    MENU_EXPORT_ICS -> createIcs.launch(getString(R.string.export_ics_name, stamp))
+                    MENU_EXPORT_JSON -> createJson.launch(getString(R.string.export_json_name, stamp))
+                }
+                true
+            }
+        }.show()
+    }
+
+    /** SAF [ActivityResultContracts.CreateDocument] target: no storage permission is requested. */
+    private fun writeExport(uri: Uri, kind: ExportKind) {
+        lifecycleScope.launch(AppGraph.mainDispatcher) {
+            val written = runCatching {
+                val events = repository.loadAll()
+                if (events.isEmpty()) return@runCatching false
+                withContext(AppGraph.ioDispatcher) {
+                    val now = Instant.now()
+                    val text = when (kind) {
+                        ExportKind.ICS -> IcsExporter.export(events, now)
+                        ExportKind.JSON -> JsonBackup.build(events, now)
+                    }
+                    val stream = contentResolver.openOutputStream(uri) ?: error("cannot open export target")
+                    stream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
+                }
+                true
+            }
+            val message = when {
+                written.isFailure -> R.string.export_failed
+                written.getOrNull() == false -> R.string.export_empty
+                else -> R.string.export_done
+            }
+            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun loadDay() {
@@ -151,5 +207,9 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_DAY = "selected_day"
+        private const val MENU_EXPORT_ICS = 1
+        private const val MENU_EXPORT_JSON = 2
     }
+
+    private enum class ExportKind { ICS, JSON }
 }

@@ -218,5 +218,17 @@
             android:layout_weight="1"
             android:minHeight="@dimen/touch_target_min"
             android:text="@string/save" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/exportButton"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_small"
+            android:layout_weight="1"
+            android:contentDescription="@string/export_event_ics"
+            android:minHeight="@dimen/touch_target_min"
+            android:text="@string/export_short"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

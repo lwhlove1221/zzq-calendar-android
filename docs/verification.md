@@ -20,8 +20,10 @@
 | `MainActivityTest` | 3 | 0 |
 | `AccessibilityTest` | 4 | 0 |
 | `UiFormatTest` | 4 | 0 |
-| `ScreenshotTest` | 2 | 0 |
-| **合计** | **63** | **0** |
+| `ScreenshotTest` | 3 | 0 |
+| `IcsExporterTest`（第 2 批） | 4 | 0 |
+| `JsonBackupTest`（第 2 批） | 4 | 0 |
+| **合计** | **72** | **0** |
 
 构建产物：`app/build/outputs/apk/debug/app-debug.apk`（6.41 MB）。
 
@@ -36,6 +38,14 @@
 ## 视觉验证
 
 `docs/screenshots/day-view.png`（100% 字号）与 `docs/screenshots/day-view-200.png`（200% 字号）由 `ScreenshotTest` 使用 Robolectric 原生图形渲染真实布局生成。
+
+第 2 批导出入口：`app/build/screenshots/export-main.png`（首页「更多」）与 `export-edit.png`（编辑页「导出」），同样由 `ScreenshotTest` 渲染。
+
+## 第 2 批：导出与备份
+
+- `IcsExporterTest`：20 条基准事件经 biweekly 0.6.8 读回，标题 / 备注 / 地点 / URL / 起止墙钟 / 时区 / RRULE / EXDATE / RDATE / VALARM 逐项一致；全天事件 `DTSTART;VALUE=DATE` 无 `TZID` 且日期不偏移；RRULE + EXDATE + 修改/取消例外的 `RECURRENCE-ID` 保持原开始时间；输出为 CRLF、每行 ≤ 75 字节、长中文标题折行后读回不损坏。
+- `JsonBackupTest`：1000 条事件 → `event_count=1000` 且单分片；5001 条 → 5000 + 1 两片；按字节上限分片时每片 `bytes` ≤ 上限且事件总数守恒；例外与 `valarm` 字段按 DTO 输出。
+- 真机导出（SAF → Downloads）未执行：adb 设备 `10.2.9.145:5555` 为 `unauthorized`，需手机端确认调试授权。
 
 ## 未覆盖
 

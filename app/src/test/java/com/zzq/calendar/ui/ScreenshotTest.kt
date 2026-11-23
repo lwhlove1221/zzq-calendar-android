@@ -159,6 +159,40 @@ class ScreenshotTest {
         }
     }
 
+    @Test
+    fun renderExportEntryPoints() {
+        seed("产品评审", 9 * 60, 60)
+        val main = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        capture(main, "export-main.png")
+
+        val eventId = runBlocking { AppGraph.repository(context).loadAll() }.first().master.id
+        val editor = Robolectric.buildActivity(EventEditActivity::class.java, EventEditActivity.editIntent(context, eventId))
+            .setup()
+            .get()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        capture(editor, "export-edit.png")
+    }
+
+    private fun capture(activity: android.app.Activity, name: String) {
+        val density = activity.resources.displayMetrics.density
+        val root = activity.window.decorView.findViewById<View>(android.R.id.content)
+        val width = (360 * density).toInt()
+        val height = (720 * density).toInt()
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
+        )
+        root.layout(0, 0, width, height)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        root.draw(Canvas(bitmap))
+        val output = File("build/screenshots")
+        output.mkdirs()
+        File(output, name).outputStream().use {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
+
     companion object {
         private const val DB_NAME = "screenshot-test.db"
     }
