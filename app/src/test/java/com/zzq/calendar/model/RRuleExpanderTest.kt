@@ -4,6 +4,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -391,5 +392,25 @@ class RRuleExpanderTest {
             zone,
         )
         assertEquals(listOf("2026-11-10T09:00:00"), result.starts.map { WallTime.format(it) })
+    }
+
+    @Test
+    fun countWinsOverUntilWhenBothPresent() {
+        val raw = "FREQ=DAILY;COUNT=3;UNTIL=20261102T090000Z"
+        val result = expand(raw, "2026-11-02T09:00:00", windowEnd = "2026-12-01T00:00:00")
+        assertEquals(
+            listOf(
+                "2026-11-02T09:00:00",
+                "2026-11-03T09:00:00",
+                "2026-11-04T09:00:00",
+            ),
+            result.starts.map { WallTime.format(it) },
+        )
+        assertTrue(result.warnings.any { it.contains("COUNT") && it.contains("UNTIL") })
+
+        val rule = RRule.parse(raw)
+        assertEquals(raw, rule.raw)
+        assertEquals(3, rule.count)
+        assertNull(rule.until)
     }
 }

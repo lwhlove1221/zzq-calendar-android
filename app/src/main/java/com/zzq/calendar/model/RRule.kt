@@ -90,9 +90,10 @@ data class RRule(
 
             val interval = parts["INTERVAL"]?.toIntOrNull()?.takeIf { it > 0 } ?: 1
             val count = parts["COUNT"]?.toIntOrNull()?.takeIf { it > 0 }
-            val until = parts["UNTIL"]?.let { parseUntil(it) }
+            var until = parts["UNTIL"]?.let { parseUntil(it) }
             if (count != null && until != null) {
-                warnings += "COUNT 与 UNTIL 互斥，本实现以 COUNT 为准"
+                warnings += "COUNT 与 UNTIL 互斥，本实现以 COUNT 为准，UNTIL 不参与展开"
+                until = null
             }
 
             val byDay = parts["BYDAY"]?.split(',')?.mapNotNull { token ->
