@@ -8,6 +8,7 @@ import com.zzq.calendar.model.ExceptionStatus
 import com.zzq.calendar.model.FingerprintV1
 import com.zzq.calendar.model.InstanceKey
 import com.zzq.calendar.model.InstanceType
+import com.zzq.calendar.model.RRule
 import com.zzq.calendar.model.RRuleExpander
 import com.zzq.calendar.model.RepeatSpec
 import com.zzq.calendar.model.TimeZones
@@ -106,16 +107,16 @@ class EventRepository(
     }
 
     suspend fun loadDay(day: LocalDate, zone: ZoneId = ZoneId.systemDefault()): DayAgenda =
-        withContext(ioDispatcher) { buildDay(store.loadAll(), day, zone) }
+        withContext(ioDispatcher) { buildDay(schedules(store.loadAll(), zone), day, zone) }
 
     /** Event counts per day for the month grid; days without events are omitted. */
     suspend fun loadMonth(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): Map<LocalDate, Int> =
         withContext(ioDispatcher) {
-            val stored = store.loadAll()
+            val schedules = schedules(store.loadAll(), zone)
             buildMap {
                 (1..month.lengthOfMonth()).forEach { dayOfMonth ->
                     val day = month.atDay(dayOfMonth)
-                    val count = buildDay(stored, day, zone).instanceCount
+                    val count = buildDay(schedules, day, zone).instanceCount
                     if (count > 0) put(day, count)
                 }
             }
@@ -124,23 +125,35 @@ class EventRepository(
     /** Seven consecutive days starting at [start] (Monday for the week view). */
     suspend fun loadWeek(start: LocalDate, zone: ZoneId = ZoneId.systemDefault()): List<DayAgenda> =
         withContext(ioDispatcher) {
-            val stored = store.loadAll()
-            (0L..6L).map { buildDay(stored, start.plusDays(it), zone) }
+            val schedules = schedules(store.loadAll(), zone)
+            (0L..6L).map { buildDay(schedules, start.plusDays(it), zone) }
         }
 
-    private fun buildDay(stored: List<StoredEvent>, day: LocalDate, zone: ZoneId): DayAgenda {
+    /** Wall times and zone resolved once per load: a month pass would otherwise re-parse every event ~30 times. */
+    private class Schedule(val stored: StoredEvent, deviceZone: ZoneId) {
+        val master: EventMaster = stored.master
+        val dtstart: LocalDateTime = WallTime.parse(master.dtstartWall)
+        val dtend: LocalDateTime = WallTime.parse(master.dtendWall).let { if (it.isAfter(dtstart)) it else dtstart }
+        val zone: ZoneId = TimeZones.resolve(master.tzid) ?: deviceZone
+        val recurring: Boolean = RRule.parse(master.rruleRaw).isRecurring
+    }
+
+    private fun schedules(stored: List<StoredEvent>, zone: ZoneId): List<Schedule> =
+        stored.map { Schedule(it, zone) }
+
+    private fun buildDay(schedules: List<Schedule>, day: LocalDate, zone: ZoneId): DayAgenda {
         val dayStart = day.atStartOfDay(zone).toInstant()
         val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
         val allDay = mutableListOf<EventInstance>()
         val timed = mutableListOf<EventInstance>()
 
-        stored.forEach { event ->
-            val master = event.master
+        schedules.forEach { schedule ->
+            val master = schedule.master
             if (master.tombstone) return@forEach
             if (master.allDay) {
-                allDay += expandAllDay(master, event.exceptions, day, zone)
+                allDay += expandAllDay(schedule, day, zone)
             } else {
-                timed += expandTimed(master, event.exceptions, dayStart, dayEnd, zone)
+                timed += expandTimed(schedule, dayStart, dayEnd)
             }
         }
 
@@ -152,21 +165,27 @@ class EventRepository(
     }
 
     private fun expandAllDay(
-        master: EventMaster,
-        exceptions: List<EventException>,
+        schedule: Schedule,
         day: LocalDate,
         zone: ZoneId,
     ): List<EventInstance> {
-        val dtstart = WallTime.parse(master.dtstartWall).toLocalDate()
-        val dtend = WallTime.parse(master.dtendWall).toLocalDate()
+        val master = schedule.master
+        val exceptions = schedule.stored.exceptions
+        val dtstart = schedule.dtstart.toLocalDate()
+        val dtend = schedule.dtend.toLocalDate()
         val days = maxOf(1, java.time.temporal.ChronoUnit.DAYS.between(dtstart, dtend).toInt())
-        val expanded = RRuleExpander.expand(
-            master,
-            day.minusDays(days.toLong()).atStartOfDay(),
-            day.plusDays(2).atStartOfDay(),
-            zone,
-        )
-        return expanded.starts.mapNotNull { start ->
+        val starts =
+            if (schedule.recurring) {
+                RRuleExpander.expand(
+                    master,
+                    day.minusDays(days.toLong()).atStartOfDay(),
+                    day.plusDays(2).atStartOfDay(),
+                    zone,
+                ).starts
+            } else {
+                listOf(schedule.dtstart)
+            }
+        return starts.mapNotNull { start ->
             val startDate = start.toLocalDate()
             val endDateExclusive = startDate.plusDays(days.toLong())
             if (day < startDate || day >= endDateExclusive) return@mapNotNull null
@@ -189,23 +208,26 @@ class EventRepository(
     }
 
     private fun expandTimed(
-        master: EventMaster,
-        exceptions: List<EventException>,
+        schedule: Schedule,
         dayStart: Instant,
         dayEnd: Instant,
-        zone: ZoneId,
     ): List<EventInstance> {
-        val dtstart = WallTime.parse(master.dtstartWall)
-        val dtend = WallTime.parse(master.dtendWall)
-        val duration = if (dtend.isAfter(dtstart)) {
-            java.time.Duration.between(dtstart, dtend)
+        val master = schedule.master
+        val exceptions = schedule.stored.exceptions
+        val duration = if (schedule.dtend.isAfter(schedule.dtstart)) {
+            java.time.Duration.between(schedule.dtstart, schedule.dtend)
         } else {
             java.time.Duration.ZERO
         }
-        val expanded = RRuleExpander.instancesOverlapping(master, dayStart, dayEnd, zone)
-        return expanded.mapNotNull { (start, end) ->
-            val startInstant = TimeZones.toInstant(WallTime.format(start), master.tzid, zone)
-            val endInstant = TimeZones.toInstant(WallTime.format(end), master.tzid, zone)
+        val instances =
+            if (schedule.recurring) {
+                RRuleExpander.instancesOverlapping(master, dayStart, dayEnd, schedule.zone)
+            } else {
+                listOf(schedule.dtstart to schedule.dtend)
+            }
+        return instances.mapNotNull { (start, end) ->
+            val startInstant = start.atZone(schedule.zone).toInstant()
+            val endInstant = end.atZone(schedule.zone).toInstant()
             if (!startInstant.isBefore(dayEnd) || !endInstant.isAfter(dayStart)) return@mapNotNull null
             val recurrenceId = WallTime.format(start)
             val exception = findException(exceptions, recurrenceId)
