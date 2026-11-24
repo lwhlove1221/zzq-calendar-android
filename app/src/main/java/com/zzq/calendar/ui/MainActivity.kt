@@ -63,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             ?: LocalDate.now()
 
         binding.monthButton.setOnClickListener {
-            startActivity(Intent(this, MonthActivity::class.java))
+            startActivity(MonthActivity.monthIntent(this, java.time.YearMonth.from(selectedDay)))
             finish()
         }
         binding.previousDayButton.setOnClickListener { shiftDay(-1) }

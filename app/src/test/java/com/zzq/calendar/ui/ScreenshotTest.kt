@@ -202,6 +202,40 @@ class ScreenshotTest {
         }
     }
 
+    @Test
+    fun renderWeekView() {
+        seedMonthEvents()
+        capture(WeekActivity::class.java, "week-view.png")
+    }
+
+    @Test
+    fun renderWeekViewAtTwoHundredPercentFont() {
+        seedMonthEvents()
+        org.robolectric.RuntimeEnvironment.setFontScale(2f)
+        try {
+            capture(WeekActivity::class.java, "week-view-200.png")
+        } finally {
+            org.robolectric.RuntimeEnvironment.setFontScale(1f)
+        }
+    }
+
+    @Test
+    fun renderYearView() {
+        seedMonthEvents()
+        capture(YearActivity::class.java, "year-view.png")
+    }
+
+    @Test
+    fun renderYearViewDark() {
+        seedMonthEvents()
+        try {
+            org.robolectric.RuntimeEnvironment.setQualifiers("+night")
+            capture(YearActivity::class.java, "year-view-dark.png")
+        } finally {
+            org.robolectric.RuntimeEnvironment.setQualifiers("w360dp-h640dp-xhdpi")
+        }
+    }
+
     private fun seedMonthEvents() {
         seedAllDay("公司团建")
         seed("产品评审", 9 * 60, 60)

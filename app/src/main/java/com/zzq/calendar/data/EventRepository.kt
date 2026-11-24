@@ -121,6 +121,13 @@ class EventRepository(
             }
         }
 
+    /** Seven consecutive days starting at [start] (Monday for the week view). */
+    suspend fun loadWeek(start: LocalDate, zone: ZoneId = ZoneId.systemDefault()): List<DayAgenda> =
+        withContext(ioDispatcher) {
+            val stored = store.loadAll()
+            (0L..6L).map { buildDay(stored, start.plusDays(it), zone) }
+        }
+
     private fun buildDay(stored: List<StoredEvent>, day: LocalDate, zone: ZoneId): DayAgenda {
         val dayStart = day.atStartOfDay(zone).toInstant()
         val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()

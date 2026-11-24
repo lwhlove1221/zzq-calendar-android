@@ -15,4 +15,5 @@
     <color name="fab_bg">#1F4E79</color>
     <color name="on_fab_bg">#FFFFFF</color>
     <color name="error">#B3261E</color>
+    <color name="today_tint">#141F4E79</color>
 </resources>

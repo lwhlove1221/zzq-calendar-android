@@ -33,10 +33,12 @@ class MonthActivity : AppCompatActivity() {
         binding = ActivityMonthBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        month = savedInstanceState?.getString(KEY_MONTH)?.let(YearMonth::parse) ?: YearMonth.now(zone)
+        month = savedInstanceState?.getString(KEY_MONTH)?.let(YearMonth::parse)
+            ?: intent.getStringExtra(EXTRA_MONTH)?.let(YearMonth::parse)
+            ?: YearMonth.now(zone)
         binding.previousMonthButton.setOnClickListener { shiftMonth(-1) }
         binding.nextMonthButton.setOnClickListener { shiftMonth(1) }
-        binding.todayButton.setOnClickListener {
+        CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.MONTH, month.atDay(1)) {
             month = YearMonth.now(zone)
             load()
         }
@@ -152,7 +154,12 @@ class MonthActivity : AppCompatActivity() {
         return container
     }
 
-    private companion object {
-        const val KEY_MONTH = "month"
+    companion object {
+        private const val KEY_MONTH = "month"
+        private const val EXTRA_MONTH = "extra_month"
+
+        fun monthIntent(context: android.content.Context, month: YearMonth): android.content.Intent =
+            android.content.Intent(context, MonthActivity::class.java)
+                .putExtra(EXTRA_MONTH, month.toString())
     }
 }

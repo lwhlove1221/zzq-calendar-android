@@ -3,7 +3,7 @@
 第 1 批：新建事件 → 本地保存 → 日视图显示 → 重启后仍在。
 第 2 批：`.ics` 导出 + 本地备份。
 第 3 批：`.ics` 导入（解析 → 预览 → 去重 → 原子落库）。
-月视图（用户主诉求）：默认打开就是月历网格，点某天进入日视图。
+日历视图（用户主诉求）：默认打开就是月历网格，底部可切换 月 / 周 / 年，点某天进入日视图。
 契约依据 PRD-02 v0.9（事件模型 / 时区 / RRULE / fingerprint v1）与 PRD-06 v0.8（最小布局规格）。
 
 | 项 | 值 |
@@ -14,7 +14,7 @@
 | 模块 | 单模块 `:app` |
 | 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 + 导入 staging 表 |
 | UI | View 体系（AppCompat + Material 3），无 Compose |
-| 测试 | JUnit + Robolectric 4.14.1（98 个用例） |
+| 测试 | JUnit + Robolectric 4.14.1（109 个用例） |
 
 ## 目录
 
@@ -40,7 +40,12 @@ app/src/main/java/com/zzq/calendar/
 │   ├── IcsParser.kt            编码识别、VEVENT / TZID / 例外 / VALARM 解析
 │   └── IcsImporter.kt          预览、去重、批次规则、staging 单事务落库
 └── ui/
+    ├── CalendarTabs.kt         月 / 周 / 年切换条（今天 + 三个视图）
     ├── MonthActivity.kt        月视图（默认入口，日期网格 + 事件圆点）
+    ├── WeekActivity.kt         周视图（7 列 24 小时网格）
+    ├── WeekTimelineView.kt     周网格自绘（重叠分列、今天列底色）
+    ├── YearActivity.kt         年视图（12 个迷你月历）
+    ├── YearGridView.kt         年视图自绘（整月作为点击区）
     ├── MainActivity.kt         日视图（列表 + 时间轴），可由月视图进入
     ├── DayTimelineView.kt      24h 时间轴自绘、重叠分列、点击区扩展
     ├── EventEditActivity.kt    新建 / 编辑（全天、时区、重复）
@@ -136,13 +141,15 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 - 秋季重复的本地时刻：取第一次（DST 侧）。
 - 纽约每周一 09:00 跨 2027-03-14 / 2027-11-07 的用例见 `DstRuleTest`。
 
-## 月视图（默认入口）
+## 日历视图（月 / 周 / 年）
 
-- 打开应用先看到月历：6 行 × 7 列，周一开头，显示相邻月补位日期（灰色）。
-- 每格显示当天事件数：1–3 个圆点，超过 3 个显示 `●●●+`；今天加粗并高亮。
-- 顶部可翻上 / 下月，底部「今天」回到当月；点某天进入该天的日视图。
+底部切换条固定为「今天 | 月 | 周 | 年」，三个视图共用，切到哪个都由它进入。
+
+- **月视图（默认入口）**：6 行 × 7 列，周一开头，相邻月补位日期灰色；每格显示事件圆点（1–3 个，超过显示 `●●●+`），今天加粗高亮；点某天进入该日日视图。
+- **周视图**：7 列 × 24 小时时间网格，周一开头；今天整列浅色底，事件按时间与重叠分列绘制；每列上方是星期 + 日期（全天事件用圆点标记），点列头进日视图，点事件条也进日视图。
+- **年视图**：12 个迷你月历（3 × 4）；有日程的日期用主色加粗，今天带圆形高亮；点任意月份进入月视图。
 - 日视图左上角「月视图」返回月历。
-- 截图：`docs/screenshots/month-view.png`、`month-view-dark.png`、`month-view-200.png`。
+- 截图：`docs/screenshots/month-view.png`、`week-view.png`、`year-view.png`（另有 dark / 200% 字号版本）。
 
 ## 日视图与无障碍
 
@@ -218,7 +225,7 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 5. 全天事件指纹包含展示 TZID，跨设备展示时区不同会得到不同指纹，见契约问题 Q3。
 6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`；导入实现中的取舍见 `docs/import-notes.md`。
 7. 导入的已知限制：`RECURRENCE-ID;RANGE=THISANDFUTURE` 按单次例外导入（未按 B 方案拆系列）；失败明细只在预览中展示，未提供导出文件；一个 `VTIMEZONE` 只取第一个 `TZOFFSETTO`。
-8. 月视图只显示圆点与数量，不显示事件标题；周视图（7 天时间轴）和月汇总尚未做。
+8. 月视图只显示圆点与数量，不显示事件标题；周视图的全天事件只在列头标一个圆点，不进时间网格；年视图只高亮有日程的日期，不显示数量；月 / 年汇总尚未做。
 
 ## 仓库
 

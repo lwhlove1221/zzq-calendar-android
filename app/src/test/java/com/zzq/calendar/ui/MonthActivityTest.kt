@@ -107,6 +107,30 @@ class MonthActivityTest {
     }
 
     @Test
+    fun `tabs open the week and year views`() {
+        val weekActivity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+        val weekBar = weekActivity.findViewById<LinearLayout>(R.id.tabBar)
+        assertEquals(4, weekBar.childCount)
+
+        weekBar.getChildAt(2).performClick()
+
+        assertEquals(
+            WeekActivity::class.java.name,
+            Shadows.shadowOf(weekActivity).nextStartedActivity.component?.className,
+        )
+
+        val yearActivity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+        yearActivity.findViewById<LinearLayout>(R.id.tabBar).getChildAt(3).performClick()
+
+        assertEquals(
+            YearActivity::class.java.name,
+            Shadows.shadowOf(yearActivity).nextStartedActivity.component?.className,
+        )
+    }
+
+    @Test
     fun `two hundred percent font keeps every cell tappable`() {
         seed("产品评审", 0)
         org.robolectric.RuntimeEnvironment.setFontScale(2f)
