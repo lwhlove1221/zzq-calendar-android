@@ -14,6 +14,13 @@
     <string name="untitled">未命名</string>
     <string name="timeline_description">%1$s 的时间轴，共 %2$d 个日程</string>
 
+    <string name="month_title">%1$d年%2$d月</string>
+    <string name="month_previous">上个月</string>
+    <string name="month_next">下个月</string>
+    <string name="month_view">月视图</string>
+    <string name="month_cell_description">%1$d月%2$d日，%3$d 个日程</string>
+    <string name="month_cell_empty">%1$d月%2$d日，无日程</string>
+
     <string name="edit_title">新建日程</string>
     <string name="edit_title_existing">编辑日程</string>
     <string name="field_title">标题</string>

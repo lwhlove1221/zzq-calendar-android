@@ -17,6 +17,17 @@
         android:paddingTop="@dimen/spacing_small"
         android:paddingEnd="@dimen/spacing_small">
 
+        <TextView
+            android:id="@+id/monthButton"
+            android:layout_width="@dimen/touch_target_min"
+            android:layout_height="@dimen/touch_target_min"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/month_view"
+            android:gravity="center"
+            android:text="@string/month_view"
+            android:textColor="@color/primary"
+            android:textSize="14sp" />
+
         <ImageButton
             android:id="@+id/previousDayButton"
             android:layout_width="@dimen/touch_target_min"

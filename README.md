@@ -3,6 +3,7 @@
 第 1 批：新建事件 → 本地保存 → 日视图显示 → 重启后仍在。
 第 2 批：`.ics` 导出 + 本地备份。
 第 3 批：`.ics` 导入（解析 → 预览 → 去重 → 原子落库）。
+月视图（用户主诉求）：默认打开就是月历网格，点某天进入日视图。
 契约依据 PRD-02 v0.9（事件模型 / 时区 / RRULE / fingerprint v1）与 PRD-06 v0.8（最小布局规格）。
 
 | 项 | 值 |
@@ -13,7 +14,7 @@
 | 模块 | 单模块 `:app` |
 | 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 + 导入 staging 表 |
 | UI | View 体系（AppCompat + Material 3），无 Compose |
-| 测试 | JUnit + Robolectric 4.14.1（87 个用例） |
+| 测试 | JUnit + Robolectric 4.14.1（98 个用例） |
 
 ## 目录
 
@@ -25,6 +26,7 @@ app/src/main/java/com/zzq/calendar/
 │   ├── TimeZones.kt            墙钟 ↔ 绝对时刻、TZID 解析、DST 行为
 │   ├── RRule.kt                RRULE 解析与支持度标记
 │   ├── RRuleExpander.kt        按窗口展开、EXDATE/RDATE、COUNT/UNTIL/WKST
+│   ├── MonthGrid.kt            月历 6×7 网格（周一起始）
 │   └── FingerprintV1.kt        fingerprint v1 规范化 + SHA-256
 ├── data/
 │   ├── CalendarDbHelper.kt     schema v2（events / event_exceptions / import_staging）
@@ -38,7 +40,8 @@ app/src/main/java/com/zzq/calendar/
 │   ├── IcsParser.kt            编码识别、VEVENT / TZID / 例外 / VALARM 解析
 │   └── IcsImporter.kt          预览、去重、批次规则、staging 单事务落库
 └── ui/
-    ├── MainActivity.kt         日视图（列表 + 时间轴）
+    ├── MonthActivity.kt        月视图（默认入口，日期网格 + 事件圆点）
+    ├── MainActivity.kt         日视图（列表 + 时间轴），可由月视图进入
     ├── DayTimelineView.kt      24h 时间轴自绘、重叠分列、点击区扩展
     ├── EventEditActivity.kt    新建 / 编辑（全天、时区、重复）
     └── UiFormat.kt             中文日期与时间格式
@@ -133,6 +136,14 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 - 秋季重复的本地时刻：取第一次（DST 侧）。
 - 纽约每周一 09:00 跨 2027-03-14 / 2027-11-07 的用例见 `DstRuleTest`。
 
+## 月视图（默认入口）
+
+- 打开应用先看到月历：6 行 × 7 列，周一开头，显示相邻月补位日期（灰色）。
+- 每格显示当天事件数：1–3 个圆点，超过 3 个显示 `●●●+`；今天加粗并高亮。
+- 顶部可翻上 / 下月，底部「今天」回到当月；点某天进入该天的日视图。
+- 日视图左上角「月视图」返回月历。
+- 截图：`docs/screenshots/month-view.png`、`month-view-dark.png`、`month-view-200.png`。
+
 ## 日视图与无障碍
 
 - 默认布局：顶部日期 / 时区 → 全天区 → 当天事件列表 → 24 小时时间轴。
@@ -207,6 +218,7 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 5. 全天事件指纹包含展示 TZID，跨设备展示时区不同会得到不同指纹，见契约问题 Q3。
 6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`；导入实现中的取舍见 `docs/import-notes.md`。
 7. 导入的已知限制：`RECURRENCE-ID;RANGE=THISANDFUTURE` 按单次例外导入（未按 B 方案拆系列）；失败明细只在预览中展示，未提供导出文件；一个 `VTIMEZONE` 只取第一个 `TZOFFSETTO`。
+8. 月视图只显示圆点与数量，不显示事件标题；周视图（7 天时间轴）和月汇总尚未做。
 
 ## 仓库
 

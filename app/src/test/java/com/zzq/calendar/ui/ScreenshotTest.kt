@@ -174,6 +174,48 @@ class ScreenshotTest {
         capture(editor, "export-edit.png")
     }
 
+    @Test
+    fun renderMonthView() {
+        seedMonthEvents()
+        capture(MonthActivity::class.java, "month-view.png")
+    }
+
+    @Test
+    fun renderMonthViewAtTwoHundredPercentFont() {
+        seedMonthEvents()
+        org.robolectric.RuntimeEnvironment.setFontScale(2f)
+        try {
+            capture(MonthActivity::class.java, "month-view-200.png")
+        } finally {
+            org.robolectric.RuntimeEnvironment.setFontScale(1f)
+        }
+    }
+
+    @Test
+    fun renderMonthViewDark() {
+        seedMonthEvents()
+        try {
+            org.robolectric.RuntimeEnvironment.setQualifiers("+night")
+            capture(MonthActivity::class.java, "month-view-dark.png")
+        } finally {
+            org.robolectric.RuntimeEnvironment.setQualifiers("w360dp-h640dp-xhdpi")
+        }
+    }
+
+    private fun seedMonthEvents() {
+        seedAllDay("公司团建")
+        seed("产品评审", 9 * 60, 60)
+        seed("客户电话", 10 * 60 + 30, 45)
+        seed("健身", 19 * 60, 60, dayOffset = 1)
+        seed("一对一", 14 * 60, 30, dayOffset = 3)
+    }
+
+    private fun capture(activityClass: Class<out android.app.Activity>, name: String) {
+        val activity = Robolectric.buildActivity(activityClass).setup().get()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        capture(activity, name)
+    }
+
     private fun capture(activity: android.app.Activity, name: String) {
         val density = activity.resources.displayMetrics.density
         val root = activity.window.decorView.findViewById<View>(android.R.id.content)

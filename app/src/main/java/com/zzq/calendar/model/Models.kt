@@ -98,6 +98,7 @@ data class DayAgenda(
     val timed: List<EventInstance>,
 ) {
     val isEmpty: Boolean get() = allDay.isEmpty() && timed.isEmpty()
+    val instanceCount: Int get() = allDay.size + timed.size
 }
 
 data class RepeatSpec(

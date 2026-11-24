@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/surface"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:minHeight="@dimen/touch_target_min"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/spacing_small"
+        android:paddingTop="@dimen/spacing_small"
+        android:paddingEnd="@dimen/spacing_small">
+
+        <ImageButton
+            android:id="@+id/previousMonthButton"
+            android:layout_width="@dimen/touch_target_min"
+            android:layout_height="@dimen/touch_target_min"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/month_previous"
+            android:src="@drawable/ic_chevron_left" />
+
+        <TextView
+            android:id="@+id/monthTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:maxLines="2"
+            android:textColor="@color/on_surface"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/nextMonthButton"
+            android:layout_width="@dimen/touch_target_min"
+            android:layout_height="@dimen/touch_target_min"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/month_next"
+            android:src="@drawable/ic_chevron_right" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/weekHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/screen_padding"
+        android:paddingTop="@dimen/spacing_small"
+        android:paddingEnd="@dimen/screen_padding" />
+
+    <LinearLayout
+        android:id="@+id/monthGrid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/screen_padding"
+        android:paddingEnd="@dimen/screen_padding" />
+
+    <Button
+        android:id="@+id/todayButton"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/touch_target_min"
+        android:layout_gravity="center_horizontal"
+        android:layout_margin="@dimen/spacing_small"
+        android:background="?attr/selectableItemBackground"
+        android:minWidth="@dimen/touch_target_min"
+        android:text="@string/today"
+        android:textColor="@color/primary" />
+</LinearLayout>

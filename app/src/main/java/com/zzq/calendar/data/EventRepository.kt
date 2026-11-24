@@ -18,6 +18,7 @@ import com.zzq.calendar.importer.ImportPreview
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.YearMonth
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineDispatcher
@@ -105,28 +106,43 @@ class EventRepository(
     }
 
     suspend fun loadDay(day: LocalDate, zone: ZoneId = ZoneId.systemDefault()): DayAgenda =
-        withContext(ioDispatcher) {
-            val dayStart = day.atStartOfDay(zone).toInstant()
-            val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
-            val allDay = mutableListOf<EventInstance>()
-            val timed = mutableListOf<EventInstance>()
+        withContext(ioDispatcher) { buildDay(store.loadAll(), day, zone) }
 
-            store.loadAll().forEach { stored ->
-                val master = stored.master
-                if (master.tombstone) return@forEach
-                if (master.allDay) {
-                    allDay += expandAllDay(master, stored.exceptions, day, zone)
-                } else {
-                    timed += expandTimed(master, stored.exceptions, dayStart, dayEnd, zone)
+    /** Event counts per day for the month grid; days without events are omitted. */
+    suspend fun loadMonth(month: YearMonth, zone: ZoneId = ZoneId.systemDefault()): Map<LocalDate, Int> =
+        withContext(ioDispatcher) {
+            val stored = store.loadAll()
+            buildMap {
+                (1..month.lengthOfMonth()).forEach { dayOfMonth ->
+                    val day = month.atDay(dayOfMonth)
+                    val count = buildDay(stored, day, zone).instanceCount
+                    if (count > 0) put(day, count)
                 }
             }
-
-            DayAgenda(
-                day = day,
-                allDay = allDay.sortedWith(compareBy({ it.startWall }, { it.title })),
-                timed = timed.sortedWith(compareBy({ it.start }, { it.end }, { it.title })),
-            )
         }
+
+    private fun buildDay(stored: List<StoredEvent>, day: LocalDate, zone: ZoneId): DayAgenda {
+        val dayStart = day.atStartOfDay(zone).toInstant()
+        val dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant()
+        val allDay = mutableListOf<EventInstance>()
+        val timed = mutableListOf<EventInstance>()
+
+        stored.forEach { event ->
+            val master = event.master
+            if (master.tombstone) return@forEach
+            if (master.allDay) {
+                allDay += expandAllDay(master, event.exceptions, day, zone)
+            } else {
+                timed += expandTimed(master, event.exceptions, dayStart, dayEnd, zone)
+            }
+        }
+
+        return DayAgenda(
+            day = day,
+            allDay = allDay.sortedWith(compareBy({ it.startWall }, { it.title })),
+            timed = timed.sortedWith(compareBy({ it.start }, { it.end }, { it.title })),
+        )
+    }
 
     private fun expandAllDay(
         master: EventMaster,

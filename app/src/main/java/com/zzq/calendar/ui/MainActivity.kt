@@ -58,8 +58,14 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        selectedDay = savedInstanceState?.getString(KEY_DAY)?.let(LocalDate::parse) ?: LocalDate.now()
+        selectedDay = savedInstanceState?.getString(KEY_DAY)?.let(LocalDate::parse)
+            ?: intent.getStringExtra(EXTRA_DAY)?.let(LocalDate::parse)
+            ?: LocalDate.now()
 
+        binding.monthButton.setOnClickListener {
+            startActivity(Intent(this, MonthActivity::class.java))
+            finish()
+        }
         binding.previousDayButton.setOnClickListener { shiftDay(-1) }
         binding.nextDayButton.setOnClickListener { shiftDay(1) }
         binding.todayButton.setOnClickListener {
@@ -320,10 +326,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        const val EXTRA_DAY = "extra_day"
         private const val KEY_DAY = "selected_day"
         private const val MENU_IMPORT_ICS = 1
         private const val MENU_EXPORT_ICS = 2
         private const val MENU_EXPORT_JSON = 3
+
+        fun dayIntent(context: android.content.Context, day: LocalDate): Intent =
+            Intent(context, MainActivity::class.java).putExtra(EXTRA_DAY, day.toString())
     }
 
     private enum class ExportKind { ICS, JSON }
