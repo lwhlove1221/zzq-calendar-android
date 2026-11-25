@@ -43,6 +43,11 @@ class CalendarDbHelper(
                 tzdata_version TEXT NOT NULL,
                 source_type TEXT NOT NULL DEFAULT 'local',
                 source_id TEXT NOT NULL DEFAULT '',
+                owner TEXT NOT NULL DEFAULT 'app',
+                write_back INTEGER NOT NULL DEFAULT 1,
+                system_event_id INTEGER,
+                system_calendar_id INTEGER,
+                last_synced_modified INTEGER,
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
             )
@@ -50,6 +55,7 @@ class CalendarDbHelper(
         )
         db.execSQL("CREATE INDEX idx_events_uid ON events(uid)")
         db.execSQL("CREATE INDEX idx_events_start ON events(dtstart_wall)")
+        db.execSQL("CREATE INDEX idx_events_system_event ON events(system_event_id)")
         db.execSQL(
             """
             CREATE TABLE event_exceptions (
@@ -71,10 +77,30 @@ class CalendarDbHelper(
         )
         db.execSQL("CREATE INDEX idx_exceptions_event ON event_exceptions(event_id)")
         createStaging(db)
+        createConflicts(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) createStaging(db)
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE events ADD COLUMN owner TEXT NOT NULL DEFAULT 'app'")
+            db.execSQL("ALTER TABLE events ADD COLUMN write_back INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("ALTER TABLE events ADD COLUMN system_event_id INTEGER")
+            db.execSQL("ALTER TABLE events ADD COLUMN system_calendar_id INTEGER")
+            db.execSQL("ALTER TABLE events ADD COLUMN last_synced_modified INTEGER")
+            db.execSQL("CREATE INDEX idx_events_system_event ON events(system_event_id)")
+            // Legacy "system import" (ZZQ-41) copied ROM events as local rows. Adopting them
+            // as mirrors avoids a duplicate copy next to the new mirror records.
+            db.execSQL(
+                """
+                UPDATE events SET owner = 'system', write_back = 0,
+                    system_event_id = CAST(substr(uid, 8, instr(uid, '@') - 8) AS INTEGER),
+                    system_calendar_id = CAST(substr(calendar_id, 8) AS INTEGER)
+                WHERE uid LIKE 'system-%@system.calendar' AND source_type = 'local'
+                """.trimIndent(),
+            )
+            createConflicts(db)
+        }
     }
 
     /** Parse results live here until the single commit transaction moves them into `events`. */
@@ -92,8 +118,22 @@ class CalendarDbHelper(
         )
     }
 
+    private fun createConflicts(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sync_conflicts (
+                id TEXT PRIMARY KEY NOT NULL,
+                system_event_id INTEGER,
+                title TEXT NOT NULL,
+                detail TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
     companion object {
         const val DEFAULT_NAME = "calendar.db"
-        const val VERSION = 2
+        const val VERSION = 3
     }
 }

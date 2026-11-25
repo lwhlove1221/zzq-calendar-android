@@ -25,6 +25,14 @@ data class StagingRow(
     val payload: String,
 )
 
+data class SyncConflict(
+    val id: String,
+    val systemEventId: Long?,
+    val title: String,
+    val detail: String,
+    val createdAt: Long,
+)
+
 class EventStore(private val helper: CalendarDbHelper) {
 
     fun insert(master: EventMaster, exceptions: List<EventException> = emptyList()): StoredEvent =
@@ -146,6 +154,45 @@ class EventStore(private val helper: CalendarDbHelper) {
     fun hasStaging(): Boolean =
         helper.readableDatabase.rawQuery("SELECT 1 FROM $TABLE_STAGING LIMIT 1", null).use { it.moveToFirst() }
 
+    fun upsertConflict(conflict: SyncConflict) {
+        helper.writableDatabase.insertWithOnConflict(
+            TABLE_CONFLICTS,
+            null,
+            ContentValues().apply {
+                put("id", conflict.id)
+                put("system_event_id", conflict.systemEventId)
+                put("title", conflict.title)
+                put("detail", conflict.detail)
+                put("created_at", conflict.createdAt)
+            },
+            // Keep the first detection time so the 24h retention actually expires.
+            SQLiteDatabase.CONFLICT_IGNORE,
+        )
+    }
+
+    fun conflicts(): List<SyncConflict> {
+        val result = mutableListOf<SyncConflict>()
+        helper.readableDatabase.rawQuery(
+            "SELECT id, system_event_id, title, detail, created_at FROM $TABLE_CONFLICTS ORDER BY created_at DESC",
+            null,
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                result += SyncConflict(
+                    id = cursor.getString(0),
+                    systemEventId = if (cursor.isNull(1)) null else cursor.getLong(1),
+                    title = cursor.getString(2),
+                    detail = cursor.getString(3),
+                    createdAt = cursor.getLong(4),
+                )
+            }
+        }
+        return result
+    }
+
+    fun purgeConflictsBefore(cutoff: Long) {
+        helper.writableDatabase.delete(TABLE_CONFLICTS, "created_at < ?", arrayOf(cutoff.toString()))
+    }
+
     private fun loadExceptions(db: SQLiteDatabase, eventId: String): List<EventException> {
         val result = mutableListOf<EventException>()
         db.rawQuery(
@@ -180,6 +227,11 @@ class EventStore(private val helper: CalendarDbHelper) {
         tzdataVersion = cursor.getStringRequired("tzdata_version"),
         sourceType = cursor.getStringRequired("source_type"),
         sourceId = cursor.getStringRequired("source_id"),
+        owner = cursor.getStringRequired("owner"),
+        writeBack = cursor.getIntRequired("write_back") != 0,
+        systemEventId = cursor.getLongOrNull("system_event_id"),
+        systemCalendarId = cursor.getLongOrNull("system_calendar_id"),
+        lastSyncedModified = cursor.getLongOrNull("last_synced_modified"),
         createdAt = cursor.getLongRequired("created_at"),
         updatedAt = cursor.getLongRequired("updated_at"),
     )
@@ -221,6 +273,11 @@ class EventStore(private val helper: CalendarDbHelper) {
         put("tzdata_version", master.tzdataVersion)
         put("source_type", master.sourceType)
         put("source_id", master.sourceId)
+        put("owner", master.owner)
+        put("write_back", if (master.writeBack) 1 else 0)
+        put("system_event_id", master.systemEventId)
+        put("system_calendar_id", master.systemCalendarId)
+        put("last_synced_modified", master.lastSyncedModified)
         put("created_at", master.createdAt)
         put("updated_at", master.updatedAt)
     }
@@ -285,9 +342,13 @@ class EventStore(private val helper: CalendarDbHelper) {
 
     private fun Cursor.getLongRequired(column: String): Long = getLong(getColumnIndexOrThrow(column))
 
+    private fun Cursor.getLongOrNull(column: String): Long? =
+        getColumnIndex(column).let { index -> if (index < 0 || isNull(index)) null else getLong(index) }
+
     companion object {
         private const val TABLE_EVENTS = "events"
         private const val TABLE_EXCEPTIONS = "event_exceptions"
         private const val TABLE_STAGING = "import_staging"
+        private const val TABLE_CONFLICTS = "sync_conflicts"
     }
 }

@@ -2,6 +2,7 @@ package com.zzq.calendar.export
 
 import com.zzq.calendar.data.StoredEvent
 import com.zzq.calendar.model.EventException
+import com.zzq.calendar.model.EventMaster
 import com.zzq.calendar.model.Valarm
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -24,7 +25,7 @@ object JsonBackup {
         maxEventsPerPart: Int = MAX_EVENTS_PER_PART,
         maxPartBytes: Int = MAX_PART_BYTES,
     ): String {
-        val live = events.filter { !it.master.tombstone }
+        val live = events.filter { !it.master.tombstone && it.master.owner != EventMaster.OWNER_SYSTEM }
         val parts = shard(live, maxEventsPerPart, maxPartBytes)
         val sb = StringBuilder(1024 + live.size * 512)
         sb.append("{\"schema_version\":").append(SCHEMA_VERSION)

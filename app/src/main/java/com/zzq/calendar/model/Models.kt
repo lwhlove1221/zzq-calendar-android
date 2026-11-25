@@ -58,11 +58,19 @@ data class EventMaster(
     val tzdataVersion: String = TimeZones.tzdataVersion(),
     val sourceType: String = SOURCE_LOCAL,
     val sourceId: String = "",
+    val owner: String = OWNER_APP,
+    val writeBack: Boolean = true,
+    val systemEventId: Long? = null,
+    val systemCalendarId: Long? = null,
+    val lastSyncedModified: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
 ) {
     companion object {
         const val SOURCE_LOCAL = "local"
+        const val OWNER_APP = "app"
+        const val OWNER_IMPORTED = "imported"
+        const val OWNER_SYSTEM = "system"
     }
 }
 

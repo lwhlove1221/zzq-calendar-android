@@ -14,14 +14,12 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import java.util.UUID
 
 /**
  * Reads the ROM calendar (CalendarContract) so the user can pull their system
  * calendar into the app. Requires `READ_CALENDAR`.
  *
- * The events are handed to the existing `.ics` import pipeline, so preview,
- * dedupe (UID + fingerprint) and the atomic commit come for free.
+ * Every row becomes a read-only mirror (`owner=system`) keyed by its CalendarContract id.
  */
 class SystemCalendarSource(private val context: Context) {
 
@@ -99,6 +97,7 @@ class SystemCalendarSource(private val context: Context) {
         val rrule = cursor.getString(10).orEmpty()
         val exdate = cursor.getString(11)
         val deleted = cursor.getInt(12) != 0
+        val lastModified = cursor.getLong(13)
 
         fun toStored(alarms: List<Int>): StoredEvent {
             val zone = TimeZones.resolve(tzid.orEmpty()) ?: ZoneId.systemDefault()
@@ -127,7 +126,7 @@ class SystemCalendarSource(private val context: Context) {
             }
             val uid = "system-$id@system.calendar"
             val master = EventMaster(
-                id = UUID.randomUUID().toString(),
+                id = "sys-$id",
                 uid = uid,
                 calendarId = "system-$calendarId",
                 title = title,
@@ -140,6 +139,11 @@ class SystemCalendarSource(private val context: Context) {
                 rruleRaw = rrule,
                 exdates = exdates(exdate, zone),
                 valarms = alarms.map { Valarm("duration", -it * 60, displayTzid) },
+                owner = EventMaster.OWNER_SYSTEM,
+                writeBack = false,
+                systemEventId = id,
+                systemCalendarId = calendarId,
+                lastSyncedModified = lastModified,
             )
             return StoredEvent(master, emptyList(), FingerprintV1.sha256(master, emptyList()))
         }
@@ -160,6 +164,7 @@ class SystemCalendarSource(private val context: Context) {
             CalendarContract.Events.RRULE,
             CalendarContract.Events.EXDATE,
             CalendarContract.Events.DELETED,
+            CalendarContract.Events.LAST_SYNCED,
         )
 
         private val UTC_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")

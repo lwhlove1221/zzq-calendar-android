@@ -24,6 +24,8 @@ import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class EventDraft(
@@ -35,48 +37,95 @@ data class EventDraft(
     val description: String = "",
     val location: String = "",
     val repeat: RepeatSpec = RepeatSpec(),
+    val writeBack: Boolean = true,
 )
 
 class EventRepository(
     private val helper: CalendarDbHelper,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val systemPort: SystemCalendarPort? = null,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
 
     private val store = EventStore(helper)
     private val importer by lazy { IcsImporter(helper, store) }
+    private val syncMutex = Mutex()
 
     suspend fun create(draft: EventDraft): EventMaster = withContext(ioDispatcher) {
-        val now = System.currentTimeMillis()
-        val id = UUID.randomUUID().toString()
-        val master = EventMaster(
-            id = id,
-            uid = "$id@zzq.calendar",
-            calendarId = DEFAULT_CALENDAR_ID,
-            title = draft.title.trim(),
-            description = draft.description.trim(),
-            location = draft.location.trim(),
-            allDay = draft.allDay,
-            dtstartWall = draft.startWall,
-            dtendWall = draft.endWall,
-            tzid = draft.tzid,
-            rruleRaw = com.zzq.calendar.data.RRuleBuilder.build(draft.repeat, draft.startWall),
-            createdAt = now,
-            updatedAt = now,
-        )
-        store.insert(master, emptyList()).master
+        syncMutex.withLock {
+            val timestamp = now()
+            val id = UUID.randomUUID().toString()
+            var master = EventMaster(
+                id = id,
+                uid = "$id@zzq.calendar",
+                calendarId = DEFAULT_CALENDAR_ID,
+                title = draft.title.trim(),
+                description = draft.description.trim(),
+                location = draft.location.trim(),
+                allDay = draft.allDay,
+                dtstartWall = draft.startWall,
+                dtendWall = draft.endWall,
+                tzid = draft.tzid,
+                rruleRaw = com.zzq.calendar.data.RRuleBuilder.build(draft.repeat, draft.startWall),
+                writeBack = draft.writeBack,
+                createdAt = timestamp,
+                updatedAt = timestamp,
+            )
+            if (master.writeBack) master = bindSystemEvent(master, timestamp)
+            store.insert(master, emptyList()).master
+        }
     }
 
     suspend fun update(master: EventMaster): EventMaster = withContext(ioDispatcher) {
-        val stored = store.findById(master.id) ?: error("event not found: ${master.id}")
-        val updated = master.copy(
-            rev = stored.master.rev + 1,
-            updatedAt = System.currentTimeMillis(),
-        )
-        store.update(updated, stored.exceptions).master
+        syncMutex.withLock {
+            val stored = store.findById(master.id) ?: error("event not found: ${master.id}")
+            var updated = master.copy(
+                rev = stored.master.rev + 1,
+                updatedAt = now(),
+            )
+            val port = systemPort
+            if (port != null) {
+                if (updated.owner == EventMaster.OWNER_SYSTEM) {
+                    val systemEventId = updated.systemEventId ?: error("mirror without system event id")
+                    val modified = port.update(systemEventId, updated)
+                        ?: throw IllegalStateException("写穿系统日历失败")
+                    updated = updated.copy(lastSyncedModified = modified)
+                } else if (updated.writeBack && updated.owner != EventMaster.OWNER_IMPORTED) {
+                    if (updated.systemEventId == null) {
+                        updated = bindSystemEvent(updated, updated.updatedAt)
+                    } else {
+                        val modified = runCatching { port.update(updated.systemEventId, updated) }.getOrNull()
+                        if (modified != null) {
+                            updated = updated.copy(lastSyncedModified = modified)
+                        } else {
+                            store.upsertConflict(
+                                SyncConflict(
+                                    id = "conflict-${updated.systemEventId}",
+                                    systemEventId = updated.systemEventId,
+                                    title = updated.title,
+                                    detail = "写回系统日历失败，系统事件可能已删除；已保留本机副本",
+                                    createdAt = updated.updatedAt,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            store.update(updated, stored.exceptions).master
+        }
     }
 
     suspend fun delete(eventId: String): Boolean = withContext(ioDispatcher) {
-        store.delete(eventId)
+        syncMutex.withLock {
+            val stored = store.findById(eventId)
+            val master = stored?.master
+            if (master?.systemEventId != null && systemPort != null &&
+                (master.owner == EventMaster.OWNER_SYSTEM || master.writeBack)
+            ) {
+                runCatching { systemPort.delete(master.systemEventId) }
+            }
+            store.delete(eventId)
+        }
     }
 
     suspend fun get(eventId: String): StoredEvent? = withContext(ioDispatcher) {
@@ -97,6 +146,25 @@ class EventRepository(
 
     suspend fun importIcs(bytes: ByteArray): ImportOutcome = withContext(ioDispatcher) {
         importer.import(bytes)
+    }
+
+    suspend fun syncSystem(force: Boolean = false): SyncResult = withContext(ioDispatcher) {
+        syncMutex.withLock {
+            val port = systemPort ?: return@withLock SyncResult.Applied(0, 0, 0, 0)
+            SystemSync(store, port, now).sync(force)
+        }
+    }
+
+    suspend fun conflicts(): List<SyncConflict> = withContext(ioDispatcher) { store.conflicts() }
+
+    suspend fun writableCalendars(): List<SystemCalendarRef> = withContext(ioDispatcher) {
+        runCatching { systemPort?.writableCalendars().orEmpty() }.getOrDefault(emptyList())
+    }
+
+    fun targetCalendarId(): Long? = systemPort?.targetCalendarId()
+
+    fun setTargetCalendarId(calendarId: Long) {
+        systemPort?.setTargetCalendarId(calendarId)
     }
 
     /** Returns true when an interrupted import left a staging batch behind. */
@@ -278,6 +346,19 @@ class EventRepository(
 
     fun previewFingerprint(master: EventMaster, exceptions: List<EventException> = emptyList()): String =
         FingerprintV1.sha256(master, exceptions)
+
+    /** First write-back asks for a calendar; without one the event stays local. */
+    private fun bindSystemEvent(master: EventMaster, timestamp: Long): EventMaster {
+        val port = systemPort ?: return master
+        val calendarId = port.targetCalendarId() ?: return master
+        val systemEventId = runCatching { port.create(master, calendarId) }.getOrNull() ?: return master
+        val modified = runCatching { port.lastModified(systemEventId) }.getOrNull() ?: timestamp
+        return master.copy(
+            systemEventId = systemEventId,
+            systemCalendarId = calendarId,
+            lastSyncedModified = modified,
+        )
+    }
 
     companion object {
         const val DEFAULT_CALENDAR_ID = "cal-local"

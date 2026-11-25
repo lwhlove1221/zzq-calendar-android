@@ -88,9 +88,32 @@
     <string name="import_failed">导入失败：%1$s</string>
     <string name="import_empty">没有可导入的事件</string>
     <string name="import_read_failed">读取文件失败，请重试</string>
-    <string name="import_system_calendar">从系统日历导入</string>
+    <string name="import_system_calendar">同步系统日历</string>
     <string name="import_system_read_failed">读取系统日历失败，请重试</string>
     <string name="import_system_empty">系统日历里没有可导入的事件</string>
     <string name="import_system_permission">需要日历读取权限才能导入</string>
     <string name="import_interrupted">上次导入未完成，已丢弃未提交的数据</string>
+
+    <string name="sync_permission">需要日历读取权限才能同步系统日历</string>
+    <string name="sync_failed">系统日历同步失败</string>
+    <string name="sync_conflicts">冲突记录</string>
+    <string name="sync_conflict_title">日历同步冲突</string>
+    <string name="sync_conflict_empty">没有同步冲突</string>
+    <string name="sync_conflicts_found">发现 %1$d 条同步冲突，可在「冲突记录」查看</string>
+    <string name="sync_reset_title">系统日历大量变化</string>
+    <string name="sync_reset_message">本次同步有 %1$d 条事件消失（共 %2$d 条）。已暂停自动删除。是否确认按系统日历清理镜像？App 自有日程不受影响。</string>
+    <string name="sync_reset_confirm">确认清理</string>
+    <string name="writeback_pick_title">选择写回的目标日历</string>
+    <string name="writeback_no_calendar">没有可写的系统日历，已仅保存到本机</string>
+    <string name="writeback_permission">未授权写入系统日历，已仅保存到本机</string>
+    <string name="mirror_write_permission">未授权写入系统日历，不能修改系统日程</string>
+    <string name="import_choice_title">这是导入的日程</string>
+    <string name="import_choice_message">这次修改如何保存？选择后会记住，不再询问。</string>
+    <string name="import_choice_local">仅本机修改</string>
+    <string name="import_choice_write">写回系统日历</string>
+    <string name="writeback_failed">写回系统日历失败</string>
+    <string name="delete">删除</string>
+    <string name="delete_confirm_title">删除日程</string>
+    <string name="delete_confirm_message">删除后不可恢复，确定删除吗？</string>
+    <string name="delete_failed">删除失败，请重试</string>
 </resources>

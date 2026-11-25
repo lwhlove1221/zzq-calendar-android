@@ -1,9 +1,11 @@
 package com.zzq.calendar.ui
 
+import android.Manifest
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
@@ -12,6 +14,8 @@ import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
@@ -51,9 +55,39 @@ class EventEditActivity : AppCompatActivity() {
     private var originalRepeatIndex = 0
     private var originalCountText = ""
     private var saving = false
+    private var writeBackChoice: Boolean? = null
+    private var forceLocalOnly = false
+    private var gatePending = false
+    private var pendingAction: (() -> Unit)? = null
+    private var pendingDelete = false
 
     private val createIcs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
         uri?.let { exportCurrent(it) }
+    }
+
+    private val writePermission = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val granted = grants[Manifest.permission.WRITE_CALENDAR] == true
+        val action = pendingAction
+        val wasDelete = pendingDelete
+        pendingAction = null
+        pendingDelete = false
+        gatePending = false
+        if (granted) {
+            action?.invoke()
+            return@registerForActivityResult
+        }
+        val mirror = existing?.owner == EventMaster.OWNER_SYSTEM
+        Toast.makeText(
+            this,
+            if (mirror) R.string.mirror_write_permission else R.string.writeback_permission,
+            Toast.LENGTH_LONG,
+        ).show()
+        if (!mirror && !wasDelete) {
+            forceLocalOnly = true
+            action?.invoke()
+        }
     }
 
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
@@ -81,6 +115,7 @@ class EventEditActivity : AppCompatActivity() {
         }
         binding.cancelButton.setOnClickListener { finish() }
         binding.saveButton.setOnClickListener { save() }
+        binding.deleteButton.setOnClickListener { confirmDelete() }
         binding.exportButton.setOnClickListener {
             val stamp = LocalDate.now(zone).toString()
             createIcs.launch(getString(R.string.export_ics_name, stamp))
@@ -92,6 +127,7 @@ class EventEditActivity : AppCompatActivity() {
             renderTimes()
         } else {
             binding.editHeading.setText(R.string.edit_title_existing)
+            binding.deleteButton.visibility = View.VISIBLE
             loadExisting(id)
         }
     }
@@ -214,7 +250,8 @@ class EventEditActivity : AppCompatActivity() {
             binding.seriesWarning.setText(if (ruleComplex) R.string.series_locked else R.string.series_warning)
             binding.seriesWarning.visibility = if (master.rruleRaw.isBlank()) View.GONE else View.VISIBLE
             renderTimes()
-            binding.exportButton.visibility = View.VISIBLE
+            binding.exportButton.visibility =
+                if (master.owner == EventMaster.OWNER_SYSTEM) View.GONE else View.VISIBLE
         }
     }
 
@@ -272,7 +309,13 @@ class EventEditActivity : AppCompatActivity() {
     }
 
     private fun save() {
-        if (saving) return
+        if (saving || gatePending) return
+        if (!validateInput()) return
+        if (!ensureWritePolicy()) return
+        doSave()
+    }
+
+    private fun validateInput(): Boolean {
         binding.titleLayout.error = null
         binding.repeatCountLayout.error = null
 
@@ -280,35 +323,134 @@ class EventEditActivity : AppCompatActivity() {
         if (title.isEmpty()) {
             binding.titleLayout.error = getString(R.string.error_title_empty)
             binding.titleInput.requestFocus()
-            return
+            return false
         }
 
         val frequency = selectedFrequency()
         val countText = binding.repeatCountInput.text?.toString().orEmpty().trim()
-        val count = if (frequency == null || countText.isEmpty()) {
-            null
-        } else {
+        if (frequency != null && countText.isNotEmpty()) {
             val parsed = countText.toIntOrNull()
             if (parsed == null || parsed < 1) {
                 binding.repeatCountLayout.error = getString(R.string.error_repeat_count)
-                return
+                return false
             }
-            parsed
         }
 
         if (allDay) {
             if (!end.toLocalDate().isAfter(start.toLocalDate())) {
                 Toast.makeText(this, R.string.error_all_day_range, Toast.LENGTH_SHORT).show()
-                return
+                return false
             }
         } else if (!end.isAfter(start)) {
             Toast.makeText(this, R.string.error_time_range, Toast.LENGTH_SHORT).show()
-            return
+            return false
         }
+        return true
+    }
+
+    /** Asks for the target calendar / imported-item choice before the first save. */
+    private fun ensureWritePolicy(): Boolean {
+        val current = existing
+        if (current?.owner == EventMaster.OWNER_SYSTEM) {
+            if (!hasWritePermission()) {
+                requestWriteAccess()
+                return false
+            }
+            return true
+        }
+        val imported = current?.owner == EventMaster.OWNER_IMPORTED
+        if (imported && writeBackChoice == null) {
+            gatePending = true
+            AlertDialog.Builder(this)
+                .setTitle(R.string.import_choice_title)
+                .setMessage(R.string.import_choice_message)
+                .setPositiveButton(R.string.import_choice_write) { _, _ ->
+                    gatePending = false
+                    writeBackChoice = true
+                    save()
+                }
+                .setNegativeButton(R.string.import_choice_local) { _, _ ->
+                    gatePending = false
+                    writeBackChoice = false
+                    save()
+                }
+                .show()
+            return false
+        }
+        val writeBack = when {
+            forceLocalOnly -> false
+            imported -> writeBackChoice == true
+            else -> current?.writeBack ?: true
+        }
+        if (!writeBack) return true
+        if (!hasWritePermission()) {
+            requestWriteAccess()
+            return false
+        }
+        if (repository.targetCalendarId() == null) {
+            chooseTargetCalendar()
+            return false
+        }
+        return true
+    }
+
+    private fun hasWritePermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_CALENDAR) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestWriteAccess() {
+        gatePending = true
+        pendingAction = { save() }
+        writePermission.launch(
+            arrayOf(Manifest.permission.WRITE_CALENDAR, Manifest.permission.READ_CALENDAR),
+        )
+    }
+
+    private fun chooseTargetCalendar() {
+        gatePending = true
+        lifecycleScope.launch(AppGraph.mainDispatcher) {
+            val calendars = repository.writableCalendars()
+            if (calendars.isEmpty()) {
+                gatePending = false
+                forceLocalOnly = true
+                Toast.makeText(this@EventEditActivity, R.string.writeback_no_calendar, Toast.LENGTH_LONG).show()
+                save()
+                return@launch
+            }
+            AlertDialog.Builder(this@EventEditActivity)
+                .setTitle(R.string.writeback_pick_title)
+                .setItems(calendars.map { it.name }.toTypedArray()) { _, index ->
+                    gatePending = false
+                    repository.setTargetCalendarId(calendars[index].id)
+                    save()
+                }
+                .setOnCancelListener {
+                    gatePending = false
+                    forceLocalOnly = true
+                    save()
+                }
+                .show()
+        }
+    }
+
+    private fun doSave() {
+        binding.titleLayout.error = null
+
+        val title = binding.titleInput.text?.toString().orEmpty().trim()
+        val frequency = selectedFrequency()
+        val countText = binding.repeatCountInput.text?.toString().orEmpty().trim()
+        val count = if (frequency == null || countText.isEmpty()) null else countText.toInt()
 
         val startWall = WallTime.format(start)
         val endWall = WallTime.format(end)
         val repeat = RepeatSpec(frequency = frequency, interval = 1, count = count)
+        val current = existing
+        val writeBack = when {
+            current?.owner == EventMaster.OWNER_SYSTEM -> true
+            forceLocalOnly -> false
+            current?.owner == EventMaster.OWNER_IMPORTED -> writeBackChoice == true
+            else -> current?.writeBack ?: true
+        }
         val draft = EventDraft(
             title = title,
             allDay = allDay,
@@ -317,6 +459,7 @@ class EventEditActivity : AppCompatActivity() {
             tzid = eventTzid,
             description = binding.noteInput.text?.toString().orEmpty(),
             repeat = repeat,
+            writeBack = writeBack,
         )
 
         val errors = repository.validate(draft)
@@ -349,6 +492,12 @@ class EventEditActivity : AppCompatActivity() {
                             dtendWall = endWall,
                             tzid = eventTzid,
                             rruleRaw = rruleRaw,
+                            owner = if (master.owner == EventMaster.OWNER_IMPORTED) {
+                                EventMaster.OWNER_APP
+                            } else {
+                                master.owner
+                            },
+                            writeBack = writeBack,
                         ),
                     )
                 }
@@ -360,6 +509,49 @@ class EventEditActivity : AppCompatActivity() {
                 finish()
             } else {
                 Toast.makeText(this@EventEditActivity, R.string.save_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun confirmDelete() {
+        val id = eventId ?: return
+        val master = existing ?: return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.delete_confirm_title)
+            .setMessage(R.string.delete_confirm_message)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                if (master.systemEventId != null && !hasWritePermission()) {
+                    gatePending = true
+                    pendingDelete = true
+                    pendingAction = { confirmDeleteAfterPermission(id) }
+                    writePermission.launch(
+                        arrayOf(Manifest.permission.WRITE_CALENDAR, Manifest.permission.READ_CALENDAR),
+                    )
+                } else {
+                    deleteEvent(id)
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmDeleteAfterPermission(id: String) {
+        gatePending = false
+        deleteEvent(id)
+    }
+
+    private fun deleteEvent(id: String) {
+        saving = true
+        binding.deleteButton.isEnabled = false
+        lifecycleScope.launch(AppGraph.mainDispatcher) {
+            val deleted = runCatching { repository.delete(id) }.getOrDefault(false)
+            saving = false
+            if (deleted) {
+                setResult(RESULT_OK)
+                finish()
+            } else {
+                binding.deleteButton.isEnabled = true
+                Toast.makeText(this@EventEditActivity, R.string.delete_failed, Toast.LENGTH_SHORT).show()
             }
         }
     }

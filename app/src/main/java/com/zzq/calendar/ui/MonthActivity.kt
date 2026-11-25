@@ -2,6 +2,9 @@ package com.zzq.calendar.ui
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.CalendarContract
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -27,6 +30,12 @@ class MonthActivity : AppCompatActivity() {
 
     private var month: YearMonth = YearMonth.now()
     private var loadGeneration = 0
+    private val syncHandler = Handler(Looper.getMainLooper())
+    private val syncRunnable = Runnable { SystemSyncUi.refresh(this) { load() } }
+    private val systemCalendarObserver = SystemCalendarObserver {
+        syncHandler.removeCallbacks(syncRunnable)
+        syncHandler.postDelayed(syncRunnable, 800)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +64,22 @@ class MonthActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         load()
+        SystemSyncUi.refresh(this) { load() }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        contentResolver.registerContentObserver(
+            CalendarContract.Events.CONTENT_URI,
+            true,
+            systemCalendarObserver,
+        )
+    }
+
+    override fun onStop() {
+        contentResolver.unregisterContentObserver(systemCalendarObserver)
+        syncHandler.removeCallbacks(syncRunnable)
+        super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

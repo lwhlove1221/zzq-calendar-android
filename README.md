@@ -1,8 +1,9 @@
-# 日程（Android V1 · 第 3 批）
+# 日程（Android V1 · 第 4 批）
 
 第 1 批：新建事件 → 本地保存 → 日视图显示 → 重启后仍在。
 第 2 批：`.ics` 导出 + 本地备份。
 第 3 批：`.ics` 导入（解析 → 预览 → 去重 → 原子落库）。
+第 4 批：系统日历双向同步（镜像 + App 自有事件写回 + 冲突列表 + 来源重置保护）。
 日历视图（用户主诉求）：默认打开就是月历网格，底部可切换 月 / 周 / 年，点某天进入日视图。
 契约依据 PRD-02 v0.9（事件模型 / 时区 / RRULE / fingerprint v1）与 PRD-06 v0.8（最小布局规格）。
 
@@ -12,9 +13,9 @@
 | 构建 | Gradle 8.9 + AGP 8.7.2 |
 | minSdk / targetSdk / compileSdk | 26 / 35 / 35 |
 | 模块 | 单模块 `:app` |
-| 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 + 导入 staging 表 |
+| 本地库 | `SQLiteOpenHelper` + WAL，事件表 + 例外表 + 导入 staging 表 + 同步冲突表 |
 | UI | View 体系（AppCompat + Material 3），无 Compose |
-| 测试 | JUnit + Robolectric 4.14.1（109 个用例） |
+| 测试 | JUnit + Robolectric 4.14.1（132 个用例） |
 
 ## 目录
 
@@ -29,7 +30,7 @@ app/src/main/java/com/zzq/calendar/
 │   ├── MonthGrid.kt            月历 6×7 网格（周一起始）
 │   └── FingerprintV1.kt        fingerprint v1 规范化 + SHA-256
 ├── data/
-│   ├── CalendarDbHelper.kt     schema v2（events / event_exceptions / import_staging）
+│   ├── CalendarDbHelper.kt     schema v3（events / event_exceptions / import_staging / sync_conflicts）
 │   ├── EventStore.kt           读写与映射（事务）、staging
 │   ├── EventRepository.kt      仓库层、日视图聚合、校验
 │   └── RRuleBuilder.kt         编辑器预设 → RRULE 原文
@@ -73,7 +74,7 @@ export ROBOLECTRIC_HOME=/short/writable/dir
 
 （`java.io.tmpdir` 会被指向 `ROBOLECTRIC_HOME/tmp`，避免 Windows 长路径导致 SQLite 打不开。）
 
-## 数据模型（schema v2）
+## 数据模型（schema v3）
 
 `events`（主事件）
 
@@ -90,6 +91,10 @@ export ROBOLECTRIC_HOME=/short/writable/dir
 | `valarm_list` | 换行分隔 `trigger_type,offset,tzid` |
 | `tombstone`, `rev`, `fingerprint` | 墓碑、版本、写入时计算的指纹 |
 | `tzdata_version`, `created_at`, `updated_at` | 展开上下文与时间戳 |
+| `owner` | `app` / `imported` / `system`；镜像只读，导入项首次编辑时选择归属 |
+| `write_back` | 自有事件是否写回系统日历；导入项默认 0 |
+| `system_event_id`, `system_calendar_id` | 与 CalendarContract 事件的映射 |
+| `last_synced_modified` | 最近一次写回 / 采用系统版本的时间（provider 无 LAST_SYNCED 时为写入时刻） |
 
 `event_exceptions`（实例例外）
 
@@ -103,6 +108,20 @@ export ROBOLECTRIC_HOME=/short/writable/dir
 - 字段：`batch_id, seq, line, payload`；`payload` 是原始 `VEVENT` 块（含例外），可回溯。
 - 只在用户确认后写入；正式落库在同一事务里写 `events` 并清空该批次。
 - 进程被杀 / 崩溃时事务回滚，staging 残留下次启动即丢弃，不会进入正式库。
+
+`sync_conflicts`（schema v3 新增）
+
+- 字段：`id, system_event_id, title, detail, created_at`；按 `system_event_id` 去重，保留 24 小时。
+- 记录「系统删自有事件」「两边都改」两类败者；不自动重写系统事件。
+
+## 系统日历同步（第 4 批）
+
+- 权限：`READ_CALENDAR` / `WRITE_CALENDAR` 分开申请；拒绝读不走同步，拒绝写降级为仅本机。
+- 镜像：前台 `onResume` + `ContentObserver` 实时刷新，WorkManager 15 分钟 best-effort；镜像 `owner=system`，不调度提醒、不进 `.ics` / JSON 导出、不上云。
+- 写回：首次写回弹目标日历选择；`owner=app` 的新建 / 改 / 删写回，记录 `system_event_id + last_synced_modified`；导入项首次编辑二选一（仅本机 / 写回）并记住。
+- 冲突：两边都改按 `lastModified` 新者胜（provider 无该字段时保留本机并把分歧写入冲突列表）；系统删自有事件只进冲突列表。
+- 来源重置保护：单次消失 > 30% 或 > 50 条暂停自动删改，弹窗人工确认；App 自有事件批量消失只按 50 条阈值暂停。
+- 循环防护：写回后比较内容指纹（忽略 `calendar_id`），相同即视为自己的写入回声，不再产生镜像或冲突。
 
 所有读写都在 `Dispatchers.IO` 上执行（`EventRepository`），主线程只做渲染，避免 ANR。
 
@@ -226,6 +245,7 @@ YEARLY 的 `BYMONTHDAY` / `BYDAY` 在未给 `BYMONTH` 时按 DTSTART 所在月�
 6. 契约问题 Q1–Q4 见 `docs/contract-notes.md`；导入实现中的取舍见 `docs/import-notes.md`。
 7. 导入的已知限制：`RECURRENCE-ID;RANGE=THISANDFUTURE` 按单次例外导入（未按 B 方案拆系列）；失败明细只在预览中展示，未提供导出文件；一个 `VTIMEZONE` 只取第一个 `TZOFFSETTO`。
 8. 月视图只显示圆点与数量，不显示事件标题；周视图的全天事件只在列头标一个圆点，不进时间网格；年视图只高亮有日程的日期，不显示数量；月 / 年汇总尚未做。
+9. 系统日历同步的已知限制：CalendarContract 没有可靠的事件修改时间，`LAST_SYNCED` 为 0 时以本机写入时刻代替，两边同时修改会保留本机版本并进冲突列表；镜像按 CalendarContract 行导入，重复事件的实例例外会作为独立行；写回不携带 VALARM（提醒模块尚未接入）；第 4 批真机只覆盖小米，OPPO 未连接。
 
 ## 仓库
 

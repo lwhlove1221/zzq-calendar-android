@@ -3,6 +3,7 @@ package com.zzq.calendar.importer
 import com.zzq.calendar.data.CalendarDbHelper
 import com.zzq.calendar.data.EventStore
 import com.zzq.calendar.data.StagingRow
+import com.zzq.calendar.model.EventMaster
 import java.util.UUID
 
 enum class ImportItemKind(val wireValue: String) {
@@ -148,7 +149,12 @@ class IcsImporter(
         try {
             store.readStaging(batchId).forEach { row ->
                 val staged = IcsParser.parseStaged(row.payload)
-                store.insertWithin(db, staged.master, staged.exceptions)
+                // Imported copies are App-owned only after the user opts into write-back.
+                store.insertWithin(
+                    db,
+                    staged.master.copy(owner = EventMaster.OWNER_IMPORTED, writeBack = false),
+                    staged.exceptions,
+                )
             }
             store.deleteStaging(db, batchId)
             db.setTransactionSuccessful()

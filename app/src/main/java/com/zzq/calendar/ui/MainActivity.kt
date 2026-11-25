@@ -2,9 +2,11 @@ package com.zzq.calendar.ui
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.CalendarContract
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
@@ -14,11 +16,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
-import com.zzq.calendar.data.SystemCalendarSource
 import com.zzq.calendar.databinding.ActivityMainBinding
 import com.zzq.calendar.export.IcsExporter
 import com.zzq.calendar.export.JsonBackup
@@ -41,6 +41,9 @@ class MainActivity : AppCompatActivity() {
 
     private var selectedDay: LocalDate = LocalDate.now()
     private var loadGeneration = 0
+    private val syncHandler = Handler(Looper.getMainLooper())
+    private val syncRunnable = Runnable { syncFromSystem() }
+    private val systemCalendarObserver = SystemCalendarObserver { scheduleSync() }
 
     private val editLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
 
@@ -57,12 +60,12 @@ class MainActivity : AppCompatActivity() {
         uri?.let { readImport(it) }
     }
 
-    private val readCalendarPermission =
+    private val syncPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                readSystemCalendar()
+                syncFromSystem()
             } else {
-                Toast.makeText(this, R.string.import_system_permission, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, R.string.sync_permission, Toast.LENGTH_LONG).show()
             }
         }
 
@@ -100,7 +103,23 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (SystemSyncUi.hasRead(this)) syncFromSystem()
         loadDay()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        contentResolver.registerContentObserver(
+            CalendarContract.Events.CONTENT_URI,
+            true,
+            systemCalendarObserver,
+        )
+    }
+
+    override fun onStop() {
+        contentResolver.unregisterContentObserver(systemCalendarObserver)
+        syncHandler.removeCallbacks(syncRunnable)
+        super.onStop()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -132,14 +151,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun showExportMenu(anchor: View) {
         PopupMenu(this, anchor).apply {
-            menu.add(0, MENU_IMPORT_SYSTEM, 0, R.string.import_system_calendar)
-            menu.add(0, MENU_IMPORT_ICS, 1, R.string.import_ics)
-            menu.add(0, MENU_EXPORT_ICS, 2, R.string.export_ics_all)
-            menu.add(0, MENU_EXPORT_JSON, 3, R.string.export_backup_all)
+            menu.add(0, MENU_SYNC_SYSTEM, 0, R.string.import_system_calendar)
+            menu.add(0, MENU_CONFLICTS, 1, R.string.sync_conflicts)
+            menu.add(0, MENU_IMPORT_ICS, 2, R.string.import_ics)
+            menu.add(0, MENU_EXPORT_ICS, 3, R.string.export_ics_all)
+            menu.add(0, MENU_EXPORT_JSON, 4, R.string.export_backup_all)
             setOnMenuItemClickListener { item ->
                 val stamp = LocalDate.now(zone).toString()
                 when (item.itemId) {
-                    MENU_IMPORT_SYSTEM -> importFromSystemCalendar()
+                    MENU_SYNC_SYSTEM -> syncFromSystemWithPermission()
+                    MENU_CONFLICTS -> SystemSyncUi.showConflicts(this@MainActivity)
                     MENU_IMPORT_ICS -> openIcs.launch(arrayOf("*/*"))
                     MENU_EXPORT_ICS -> createIcs.launch(getString(R.string.export_ics_name, stamp))
                     MENU_EXPORT_JSON -> createJson.launch(getString(R.string.export_json_name, stamp))
@@ -149,43 +170,21 @@ class MainActivity : AppCompatActivity() {
         }.show()
     }
 
-    private fun importFromSystemCalendar() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CALENDAR) ==
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            readSystemCalendar()
+    private fun syncFromSystemWithPermission() {
+        if (SystemSyncUi.hasRead(this)) {
+            syncFromSystem()
         } else {
-            readCalendarPermission.launch(Manifest.permission.READ_CALENDAR)
+            syncPermission.launch(Manifest.permission.READ_CALENDAR)
         }
     }
 
-    /** ROM calendar → the same `.ics` pipeline, so dedupe and the atomic commit are shared. */
-    private fun readSystemCalendar() {
-        lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val events = runCatching {
-                withContext(AppGraph.ioDispatcher) {
-                    SystemCalendarSource(this@MainActivity).readEvents()
-                }
-            }.onFailure { android.util.Log.w("SystemCalendar", "read failed", it) }.getOrNull()
-            android.util.Log.i("SystemCalendar", "system events: ${events?.size}")
-            if (events == null) {
-                Toast.makeText(this@MainActivity, R.string.import_system_read_failed, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            if (events.isEmpty()) {
-                Toast.makeText(this@MainActivity, R.string.import_system_empty, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            val bytes = withContext(AppGraph.ioDispatcher) {
-                IcsExporter.export(events).toByteArray(Charsets.UTF_8)
-            }
-            val preview = withContext(AppGraph.ioDispatcher) { repository.previewImport(bytes) }
-            android.util.Log.i(
-                "SystemCalendar",
-                "preview total=${preview.total} created=${preview.created.size} failed=${preview.failures.size}",
-            )
-            showImportPreview(preview, bytes)
-        }
+    private fun syncFromSystem() {
+        SystemSyncUi.refresh(this) { loadDay() }
+    }
+
+    private fun scheduleSync() {
+        syncHandler.removeCallbacks(syncRunnable)
+        syncHandler.postDelayed(syncRunnable, 800)
     }
 
     private fun readImport(uri: Uri) {
@@ -382,7 +381,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_DAY = "extra_day"
         private const val KEY_DAY = "selected_day"
-        private const val MENU_IMPORT_SYSTEM = 4
+        private const val MENU_SYNC_SYSTEM = 4
+        private const val MENU_CONFLICTS = 5
         private const val MENU_IMPORT_ICS = 1
         private const val MENU_EXPORT_ICS = 2
         private const val MENU_EXPORT_JSON = 3

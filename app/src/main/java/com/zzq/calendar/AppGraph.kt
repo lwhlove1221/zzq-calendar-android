@@ -1,6 +1,7 @@
 package com.zzq.calendar
 
 import android.content.Context
+import com.zzq.calendar.data.AndroidSystemCalendarPort
 import com.zzq.calendar.data.CalendarDbHelper
 import com.zzq.calendar.data.EventRepository
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,7 +34,11 @@ object AppGraph {
             } else {
                 val dbHelper = CalendarDbHelper(context, databaseName)
                 helper = dbHelper
-                EventRepository(dbHelper, ioDispatcher).also { repository = it }
+                EventRepository(
+                    dbHelper,
+                    ioDispatcher,
+                    AndroidSystemCalendarPort(context.applicationContext),
+                ).also { repository = it }
             }
         }
     }

@@ -30,7 +30,9 @@ object IcsExporter {
             "PRODID:$PRODID",
             "CALSCALE:GREGORIAN",
         )
-        events.filter { !it.master.tombstone }.forEach { appendEvent(lines, it, stamp) }
+        // Mirrors are rebuildable from the ROM calendar and never leave the device.
+        events.filter { !it.master.tombstone && it.master.owner != EventMaster.OWNER_SYSTEM }
+            .forEach { appendEvent(lines, it, stamp) }
         lines += "END:VCALENDAR"
         return lines.joinToString(CRLF) { fold(it) } + CRLF
     }
