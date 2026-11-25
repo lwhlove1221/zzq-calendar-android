@@ -88,5 +88,9 @@
     <string name="import_failed">导入失败：%1$s</string>
     <string name="import_empty">没有可导入的事件</string>
     <string name="import_read_failed">读取文件失败，请重试</string>
+    <string name="import_system_calendar">从系统日历导入</string>
+    <string name="import_system_read_failed">读取系统日历失败，请重试</string>
+    <string name="import_system_empty">系统日历里没有可导入的事件</string>
+    <string name="import_system_permission">需要日历读取权限才能导入</string>
     <string name="import_interrupted">上次导入未完成，已丢弃未提交的数据</string>
 </resources>

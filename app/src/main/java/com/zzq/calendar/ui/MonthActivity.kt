@@ -38,7 +38,12 @@ class MonthActivity : AppCompatActivity() {
             ?: YearMonth.now(zone)
         binding.previousMonthButton.setOnClickListener { shiftMonth(-1) }
         binding.nextMonthButton.setOnClickListener { shiftMonth(1) }
-        CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.MONTH, month.atDay(1)) {
+        CalendarTabs.attach(
+            this,
+            binding.tabBar,
+            CalendarTabs.Tab.MONTH,
+            anchor = { CalendarTabs.monthAnchor(month, LocalDate.now(zone)) },
+        ) {
             month = YearMonth.now(zone)
             load()
         }

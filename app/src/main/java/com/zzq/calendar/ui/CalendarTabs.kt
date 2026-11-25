@@ -25,7 +25,7 @@ object CalendarTabs {
         activity: AppCompatActivity,
         bar: LinearLayout,
         current: Tab,
-        anchor: LocalDate,
+        anchor: () -> LocalDate,
         onToday: () -> Unit,
     ) {
         bar.removeAllViews()
@@ -36,16 +36,22 @@ object CalendarTabs {
                     if (tab == current) return@item
                     when (tab) {
                         Tab.MONTH -> activity.startActivity(
-                            MonthActivity.monthIntent(activity, YearMonth.from(anchor)),
+                            MonthActivity.monthIntent(activity, YearMonth.from(anchor())),
                         )
-                        Tab.WEEK -> activity.startActivity(WeekActivity.weekIntent(activity, anchor))
-                        Tab.YEAR -> activity.startActivity(YearActivity.yearIntent(activity, anchor.year))
+                        Tab.WEEK -> activity.startActivity(WeekActivity.weekIntent(activity, anchor()))
+                        Tab.YEAR -> activity.startActivity(YearActivity.yearIntent(activity, anchor().year))
                     }
                     activity.finish()
                 },
             )
         }
     }
+
+    fun monthAnchor(month: YearMonth, today: LocalDate): LocalDate =
+        if (YearMonth.from(today) == month) today else month.atDay(1)
+
+    fun yearAnchor(year: Int, today: LocalDate): LocalDate =
+        if (year == today.year) today else LocalDate.of(year, 1, 1)
 
     private fun item(
         activity: AppCompatActivity,

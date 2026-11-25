@@ -125,6 +125,31 @@ class AccessibilityTest {
         assertTrue(title.width > 0)
     }
 
+    @Test
+    fun dayHeaderFontScaleTwoShowsMonthButtonAndTitleInFull() {
+        RuntimeEnvironment.setFontScale(2f)
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        val density = activity.resources.displayMetrics.density
+        val root = activity.window.decorView.findViewById<View>(android.R.id.content)
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec((320 * density).toInt(), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec((640 * density).toInt(), View.MeasureSpec.AT_MOST),
+        )
+        root.layout(0, 0, root.measuredWidth, root.measuredHeight)
+
+        listOf(R.id.monthButton, R.id.dateTitle).forEach { id ->
+            val view = activity.findViewById<android.widget.TextView>(id)
+            val layout = view.layout
+            assertTrue("$id lineCount=${view.lineCount}", view.lineCount >= 1)
+            assertTrue(
+                "$id height=${view.height} textBottom=${layout.getLineBottom(view.lineCount - 1)}",
+                view.height >= layout.getLineBottom(view.lineCount - 1),
+            )
+            assertTrue("$id width=${view.width}", layout.getLineWidth(view.lineCount - 1) <= view.width)
+        }
+    }
+
     private fun seedEvent() {
         val start = LocalDateTime.now().withHour(9).withMinute(0)
         runBlocking {

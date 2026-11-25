@@ -42,7 +42,7 @@ class WeekActivity : AppCompatActivity() {
         binding.weekTimeline.onEventClick = { instance ->
             startActivity(MainActivity.dayIntent(this, instance.start.atZone(zone).toLocalDate()))
         }
-        CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.WEEK, weekStart) {
+        CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.WEEK, anchor = { weekStart }) {
             weekStart = mondayOf(LocalDate.now(zone))
             load()
         }

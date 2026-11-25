@@ -35,7 +35,12 @@ class YearActivity : AppCompatActivity() {
             startActivity(MonthActivity.monthIntent(this, month))
             finish()
         }
-        CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.YEAR, LocalDate.of(year, 1, 1)) {
+        CalendarTabs.attach(
+            this,
+            binding.tabBar,
+            CalendarTabs.Tab.YEAR,
+            anchor = { CalendarTabs.yearAnchor(year, LocalDate.now(zone)) },
+        ) {
             year = LocalDate.now(zone).year
             load()
         }
