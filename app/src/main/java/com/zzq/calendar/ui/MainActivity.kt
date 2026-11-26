@@ -93,6 +93,19 @@ class MainActivity : AppCompatActivity() {
         binding.timeline.onEmptyClick = { local -> openCreate(local) }
         binding.moreButton.setOnClickListener { anchor -> showExportMenu(anchor) }
 
+        CalendarTabs.attach(
+            this,
+            binding.tabBar,
+            CalendarTabs.Tab.DAY,
+            anchor = { selectedDay },
+        ) {
+            selectedDay = LocalDate.now(zone)
+            loadDay()
+        }
+        SwipeNavigator.attach(this, canNavigate = { CalendarRange.canShiftDay(selectedDay, it) }) {
+            shiftDay(CalendarRange.deltaDays(it))
+        }
+
         lifecycleScope.launch(AppGraph.mainDispatcher) {
             val interrupted = runCatching { repository.discardStaging() }.getOrDefault(false)
             if (interrupted) {

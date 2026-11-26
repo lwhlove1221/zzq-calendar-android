@@ -210,7 +210,7 @@ class MonthActivityTest {
         val weekBar = weekActivity.findViewById<LinearLayout>(R.id.tabBar)
         assertEquals(4, weekBar.childCount)
 
-        weekBar.getChildAt(2).performClick()
+        weekBar.getChildAt(1).performClick()
 
         assertEquals(
             WeekActivity::class.java.name,

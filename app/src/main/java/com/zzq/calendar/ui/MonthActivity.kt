@@ -75,9 +75,9 @@ class MonthActivity : AppCompatActivity() {
             binding.tabBar,
             CalendarTabs.Tab.MONTH,
             anchor = { CalendarTabs.monthAnchor(month, LocalDate.now(zone)) },
-        ) {
-            month = YearMonth.now(zone)
-            load()
+        )
+        SwipeNavigator.attach(this, canNavigate = { CalendarRange.canShiftMonth(month, it) }) {
+            shiftMonth(CalendarRange.deltaDays(it))
         }
         binding.remainingHeader.setOnClickListener {
             remainingExpanded = !remainingExpanded

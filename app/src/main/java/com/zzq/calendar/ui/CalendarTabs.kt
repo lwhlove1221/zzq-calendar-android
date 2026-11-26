@@ -12,12 +12,13 @@ import com.zzq.calendar.R
 import java.time.LocalDate
 import java.time.YearMonth
 
-/** Bottom switcher shared by the month / week / year screens: 今天 | 月 | 周 | 年. */
+/** Bottom switcher shared by all four screens: 今天 | 周 | 月 | 年. */
 object CalendarTabs {
 
     enum class Tab(val labelRes: Int) {
-        MONTH(R.string.tab_month),
+        DAY(R.string.today),
         WEEK(R.string.tab_week),
+        MONTH(R.string.tab_month),
         YEAR(R.string.tab_year),
     }
 
@@ -26,19 +27,22 @@ object CalendarTabs {
         bar: LinearLayout,
         current: Tab,
         anchor: () -> LocalDate,
-        onToday: () -> Unit,
+        onToday: () -> Unit = {},
     ) {
         bar.removeAllViews()
-        bar.addView(item(activity, activity.getString(R.string.today), selected = false, onClick = onToday))
         Tab.entries.forEach { tab ->
             bar.addView(
                 item(activity, activity.getString(tab.labelRes), selected = tab == current) {
-                    if (tab == current) return@item
+                    if (tab == current) {
+                        if (tab == Tab.DAY) onToday()
+                        return@item
+                    }
                     when (tab) {
+                        Tab.DAY -> activity.startActivity(MainActivity.dayIntent(activity, LocalDate.now()))
+                        Tab.WEEK -> activity.startActivity(WeekActivity.weekIntent(activity, anchor()))
                         Tab.MONTH -> activity.startActivity(
                             MonthActivity.monthIntent(activity, YearMonth.from(anchor())),
                         )
-                        Tab.WEEK -> activity.startActivity(WeekActivity.weekIntent(activity, anchor()))
                         Tab.YEAR -> activity.startActivity(YearActivity.yearIntent(activity, anchor().year))
                     }
                     activity.finish()

@@ -12,6 +12,7 @@ import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -75,6 +76,59 @@ class ViewSwitchTest {
 
         val next = shadowOf(activity).nextStartedActivity
         assertEquals(YearMonth.now().toString(), next.getStringExtra("extra_month"))
+    }
+
+    @Test
+    fun tabBarOrderIsTodayWeekMonthYear() {
+        val activity = Robolectric.buildActivity(WeekActivity::class.java).setup().get()
+        val bar = activity.findViewById<LinearLayout>(R.id.tabBar)
+        val expected = listOf(
+            R.string.today,
+            R.string.tab_week,
+            R.string.tab_month,
+            R.string.tab_year,
+        ).map(activity::getString)
+
+        val actual = (0 until bar.childCount)
+            .map(bar::getChildAt)
+            .filterIsInstance<TextView>()
+            .map { it.text.toString() }
+
+        assertEquals(expected, actual)
+    }
+
+    @Test
+    fun todayTabOpensDayViewForToday() {
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+
+        clickTab(activity, R.string.today)
+
+        val next = shadowOf(activity).nextStartedActivity
+        assertEquals(MainActivity::class.java.name, next.component?.className)
+        assertEquals(LocalDate.now().toString(), next.getStringExtra(MainActivity.EXTRA_DAY))
+    }
+
+    @Test
+    fun dayViewShowsTabsWithTodaySelected() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        val bar = activity.findViewById<LinearLayout>(R.id.tabBar)
+
+        assertEquals(4, bar.childCount)
+        val first = bar.getChildAt(0) as TextView
+        assertEquals(activity.getString(R.string.today), first.text.toString())
+        assertTrue(first.isSelected)
+    }
+
+    @Test
+    fun dayViewKeepsDisplayedDateAsAnchorWhenSwitchingViews() {
+        val day = LocalDate.of(2026, 10, 15)
+        val intent = MainActivity.dayIntent(context, day)
+        val activity = Robolectric.buildActivity(MainActivity::class.java, intent).setup().get()
+
+        clickTab(activity, R.string.tab_week)
+
+        val next = shadowOf(activity).nextStartedActivity
+        assertEquals(day.toString(), next.getStringExtra("extra_date"))
     }
 
     private fun clickTab(activity: AppCompatActivity, labelRes: Int) {

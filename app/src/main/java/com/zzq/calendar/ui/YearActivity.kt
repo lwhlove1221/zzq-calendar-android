@@ -40,9 +40,9 @@ class YearActivity : AppCompatActivity() {
             binding.tabBar,
             CalendarTabs.Tab.YEAR,
             anchor = { CalendarTabs.yearAnchor(year, LocalDate.now(zone)) },
-        ) {
-            year = LocalDate.now(zone).year
-            load()
+        )
+        SwipeNavigator.attach(this, canNavigate = { CalendarRange.canShiftYear(year, it) }) {
+            shiftYear(CalendarRange.deltaDays(it).toInt())
         }
     }
 

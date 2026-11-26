@@ -57,3 +57,11 @@
 - `ReminderPlannerTest`（11 条）：时长偏移按绝对时间轴计算；一个事件多提醒各生成一个调度键；全天事件按事件 TZID 的墙钟算「当天 09:00」；春令时 02:30 顺延为 03:30（07:30Z）；秋令时 01:30 取第一次（05:30Z）；春令时当天「提前 1 天」为 23 小时；重复事件按实例展开；cancelled 例外不排；镜像事件零提醒；过期提醒丢弃；调度键为 `(event_id, occurrence_key, offset, tzdata_version)`。
 - 全量单元测试 143 条通过（原 132 + 新增 11），`assembleDebug` 产出 `app/build/outputs/apk/debug/app-debug.apk`。
 - 未执行：真机 20 条提醒误差 / 无重复响、改期删除后旧提醒不再响、通知与精确闹钟权限拒绝、系统日历写回后 VALARM 可见。本机当前无 adb 连接设备。
+
+## 第 6 批：导航改版（ZZQ-56）
+
+- 底部 Tab 顺序改为 今天 / 周 / 月 / 年，四个视图共用；「今天」进入当前日的日视图，周 / 月 / 年按当前锚点切换，日视图切换其它视图时保留正在看的日期。
+- 公共 `SwipeNavigator`：四视图左滑下一页、右滑上一页；阈值 64dp、动画 160ms；支持范围 1900-01-01 ～ 2100-12-31，到边界不响应也不回弹。只在水平位移超过 touch slop 且大于垂直位移时接管手势，点击日期、纵向滚动不受影响。
+- `SwipeGestureTest`（6 条）：方向、阈值、纵向忽略、动画时长 ≤200ms、范围边界；`SwipeNavigationTest`（6 条）：日 / 周 / 月 / 年滑动翻页、纵向不翻页、2100-12 不越界；`ViewSwitchTest` 新增 Tab 顺序、今天跳日视图、日视图 Tab 选中、日视图切换保持锚点。
+- 离线执行 `:app:testDebugUnitTest :app:assembleDebug`：161 条测试全部通过，`app/build/outputs/apk/debug/app-debug.apk` 正常产出。
+- 未执行：真机滑动手感与动画帧率；adb 仍被用户占用，等通知后补。

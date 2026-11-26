@@ -189,4 +189,10 @@
                 android:layout_marginTop="@dimen/spacing_small" />
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/tabBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal" />
 </LinearLayout>
