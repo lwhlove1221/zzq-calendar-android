@@ -45,27 +45,15 @@
     </LinearLayout>
 
     <LinearLayout
-        android:id="@+id/dayHeaderRow"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:minHeight="@dimen/touch_target_min"
-        android:orientation="horizontal"
-        android:paddingStart="46dp"
-        android:paddingEnd="@dimen/screen_padding" />
-
-    <ScrollView
+        android:id="@+id/weekRows"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:fillViewport="true">
-
-        <com.zzq.calendar.ui.WeekTimelineView
-            android:id="@+id/weekTimeline"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="@dimen/screen_padding"
-            android:paddingEnd="@dimen/screen_padding" />
-    </ScrollView>
+        android:orientation="vertical"
+        android:paddingStart="@dimen/screen_padding"
+        android:paddingTop="@dimen/spacing_small"
+        android:paddingBottom="@dimen/spacing_small"
+        android:paddingEnd="@dimen/screen_padding" />
 
     <LinearLayout
         android:id="@+id/tabBar"

@@ -35,11 +35,16 @@
     <string name="week_title">%1$d年%2$d月%3$d日 – %4$d月%5$d日</string>
     <string name="week_title_cross_year">%1$d年%2$d月%3$d日 – %4$d年%5$d月%6$d日</string>
     <string name="week_day_description">%1$d月%2$d日，%3$d 个日程</string>
+    <string name="week_more_events">+%1$d 条</string>
+    <string name="week_no_events">无日程</string>
     <string name="year_previous">上一年</string>
     <string name="year_next">下一年</string>
     <string name="year_title">%1$d年</string>
     <string name="year_description">%1$d 年日历，点按月份查看</string>
     <string name="year_month_description">%1$d年%2$d月</string>
+    <string name="year_month_label">%1$d月</string>
+    <string name="year_month_count">%1$d 条</string>
+    <string name="year_month_empty">无日程</string>
 
     <string name="edit_title">新建日程</string>
     <string name="edit_title_existing">编辑日程</string>
