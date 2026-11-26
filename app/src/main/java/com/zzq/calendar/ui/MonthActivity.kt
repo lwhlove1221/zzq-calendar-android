@@ -71,6 +71,7 @@ class MonthActivity : AppCompatActivity() {
         buildWeekHeader()
         // Draw the date grid in the first frame; dots fill in when the load lands.
         render(emptyMap())
+        updatePermissionHint()
     }
 
     override fun onResume() {
