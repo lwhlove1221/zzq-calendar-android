@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -106,6 +107,81 @@ class MonthActivityTest {
 
         val title = activity.findViewById<TextView>(R.id.monthTitle)
         assertEquals(getString(activity, R.string.month_title, next.year, next.monthValue), title.text.toString())
+    }
+
+    @Test
+    fun `today cell draws the red circle`() {
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+        val today = LocalDate.now(zone)
+
+        val dayNumber = (findCell(activity, today) as ViewGroup).getChildAt(0) as TextView
+
+        assertNotNull(dayNumber.background)
+    }
+
+    @Test
+    fun `other months have no red circle`() {
+        val pastMonth = YearMonth.now(zone).minusMonths(1)
+        val activity = Robolectric.buildActivity(
+            MonthActivity::class.java,
+            MonthActivity.monthIntent(context, pastMonth),
+        ).setup().get()
+        ShadowLooper.idleMainLooper()
+
+        val grid = activity.findViewById<LinearLayout>(R.id.monthGrid)
+        repeat(grid.childCount) { rowIndex ->
+            val row = grid.getChildAt(rowIndex) as LinearLayout
+            repeat(row.childCount) { columnIndex ->
+                val dayNumber = (row.getChildAt(columnIndex) as ViewGroup).getChildAt(0) as TextView
+                assertNull(dayNumber.background)
+            }
+        }
+    }
+
+    @Test
+    fun `past month lists completed events in time order and expands on header tap`() {
+        val pastMonth = YearMonth.now(zone).minusMonths(1)
+        seedAt("月初会议", pastMonth.atDay(1))
+        seedAt("月中会议", pastMonth.atDay(2))
+
+        val activity = Robolectric.buildActivity(
+            MonthActivity::class.java,
+            MonthActivity.monthIntent(context, pastMonth),
+        ).setup().get()
+        ShadowLooper.idleMainLooper()
+
+        assertEquals(
+            "剩余 0",
+            activity.findViewById<TextView>(R.id.remainingLabel).text.toString(),
+        )
+        assertEquals(
+            "已完成 2",
+            activity.findViewById<TextView>(R.id.completedLabel).text.toString(),
+        )
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.completedList).visibility)
+
+        activity.findViewById<View>(R.id.completedHeader).performClick()
+
+        val list = activity.findViewById<LinearLayout>(R.id.completedList)
+        assertEquals(View.VISIBLE, list.visibility)
+        assertEquals(2, list.childCount)
+        assertEquals(
+            "月初会议",
+            list.getChildAt(0).findViewById<TextView>(R.id.eventTitle).text.toString(),
+        )
+        assertEquals(
+            "月中会议",
+            list.getChildAt(1).findViewById<TextView>(R.id.eventTitle).text.toString(),
+        )
+    }
+
+    @Test
+    fun `empty group shows none when expanded`() {
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.remainingEmpty).visibility)
     }
 
     @Test
@@ -196,6 +272,10 @@ class MonthActivityTest {
 
     private fun seed(title: String, dayOffset: Long) {
         val day = LocalDate.now(zone).plusDays(dayOffset)
+        seedAt(title, day)
+    }
+
+    private fun seedAt(title: String, day: LocalDate) {
         val start = day.atTime(9, 0)
         runBlocking {
             AppGraph.repository(context).create(
