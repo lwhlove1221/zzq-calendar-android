@@ -2,35 +2,26 @@ package com.zzq.calendar.ui
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
 import com.zzq.calendar.databinding.ActivityMainBinding
-import com.zzq.calendar.export.IcsExporter
-import com.zzq.calendar.export.JsonBackup
-import com.zzq.calendar.importer.ImportPreview
-import com.zzq.calendar.importer.ImportStatus
 import com.zzq.calendar.model.DayAgenda
 import com.zzq.calendar.model.EventInstance
-import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
@@ -46,19 +37,6 @@ class MainActivity : AppCompatActivity() {
 
     private val editLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { }
 
-    private val createIcs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
-        uri?.let { writeExport(it, ExportKind.ICS) }
-    }
-
-    private val createJson = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        uri?.let { writeExport(it, ExportKind.JSON) }
-    }
-
-    /** SAF picker: `.ics` needs no storage permission. */
-    private val openIcs = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { readImport(it) }
-    }
-
     private val syncPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -70,6 +48,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -91,7 +70,6 @@ class MainActivity : AppCompatActivity() {
         binding.newEventButton.setOnClickListener { openCreate(defaultStart()) }
         binding.timeline.onEventClick = { instance -> openEdit(instance.master.id) }
         binding.timeline.onEmptyClick = { local -> openCreate(local) }
-        binding.moreButton.setOnClickListener { anchor -> showExportMenu(anchor) }
 
         CalendarTabs.attach(
             this,
@@ -159,35 +137,6 @@ class MainActivity : AppCompatActivity() {
         editLauncher.launch(EventEditActivity.editIntent(this, eventId))
     }
 
-    private fun showExportMenu(anchor: View) {
-        PopupMenu(this, anchor).apply {
-            menu.add(0, MENU_SYNC_SYSTEM, 0, R.string.import_system_calendar)
-            menu.add(0, MENU_CONFLICTS, 1, R.string.sync_conflicts)
-            menu.add(0, MENU_IMPORT_ICS, 2, R.string.import_ics)
-            menu.add(0, MENU_EXPORT_ICS, 3, R.string.export_ics_all)
-            menu.add(0, MENU_EXPORT_JSON, 4, R.string.export_backup_all)
-            setOnMenuItemClickListener { item ->
-                val stamp = LocalDate.now(zone).toString()
-                when (item.itemId) {
-                    MENU_SYNC_SYSTEM -> syncFromSystemWithPermission()
-                    MENU_CONFLICTS -> SystemSyncUi.showConflicts(this@MainActivity)
-                    MENU_IMPORT_ICS -> openIcs.launch(arrayOf("*/*"))
-                    MENU_EXPORT_ICS -> createIcs.launch(getString(R.string.export_ics_name, stamp))
-                    MENU_EXPORT_JSON -> createJson.launch(getString(R.string.export_json_name, stamp))
-                }
-                true
-            }
-        }.show()
-    }
-
-    private fun syncFromSystemWithPermission() {
-        if (SystemSyncUi.hasRead(this)) {
-            syncFromSystem()
-        } else {
-            syncPermission.launch(Manifest.permission.READ_CALENDAR)
-        }
-    }
-
     private fun syncFromSystem() {
         SystemSyncUi.refresh(this) { loadDay() }
     }
@@ -195,129 +144,6 @@ class MainActivity : AppCompatActivity() {
     private fun scheduleSync() {
         syncHandler.removeCallbacks(syncRunnable)
         syncHandler.postDelayed(syncRunnable, 800)
-    }
-
-    private fun readImport(uri: Uri) {
-        lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val loaded = runCatching {
-                withContext(AppGraph.ioDispatcher) {
-                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: throw IllegalStateException("cannot open import source")
-                    repository.previewImport(bytes) to bytes
-                }
-            }.getOrNull()
-            if (loaded == null) {
-                Toast.makeText(this@MainActivity, R.string.import_read_failed, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            showImportPreview(loaded.first, loaded.second)
-        }
-    }
-
-    private fun showImportPreview(preview: ImportPreview, bytes: ByteArray) {
-        if (preview.fatal != null) {
-            val message = buildString {
-                append(preview.fatal.message)
-                preview.failures.take(8).forEach { failure ->
-                    append('\n').append(getString(R.string.import_line_failure, failure.line, failure.message))
-                }
-            }
-            AlertDialog.Builder(this)
-                .setTitle(R.string.import_preview_title)
-                .setMessage(message)
-                .setPositiveButton(R.string.cancel, null)
-                .show()
-            return
-        }
-        if (preview.isEmpty) {
-            Toast.makeText(this, R.string.import_empty, Toast.LENGTH_SHORT).show()
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.import_preview_title)
-            .setMessage(importPreviewText(preview))
-            .setPositiveButton(R.string.import_confirm) { _, _ -> confirmImport(bytes) }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    private fun importPreviewText(preview: ImportPreview): String = buildString {
-        append(
-            getString(
-                R.string.import_preview_summary,
-                preview.total,
-                preview.created.size,
-                preview.skipped.size,
-                preview.conflicts.size,
-                preview.failures.size,
-            ),
-        )
-        append('\n').append(getString(R.string.import_target_calendar, getString(R.string.import_default_calendar)))
-        preview.failures.take(8).forEach { failure ->
-            append('\n').append(getString(R.string.import_line_failure, failure.line, failure.message))
-        }
-        if (preview.failures.size > 8) {
-            append('\n').append(getString(R.string.import_more_failures, preview.failures.size - 8))
-        }
-        preview.conflicts.take(5).forEach { conflict ->
-            append('\n').append(getString(R.string.import_line_conflict, conflict.title, conflict.line))
-        }
-        if (preview.warnings.isNotEmpty()) {
-            append('\n').append(getString(R.string.import_warnings, preview.warnings.first()))
-        }
-    }
-
-    private fun confirmImport(bytes: ByteArray) {
-        lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val outcome = runCatching { repository.importIcs(bytes) }.getOrNull()
-            val message = when {
-                outcome == null -> getString(R.string.import_failed, getString(R.string.load_failed))
-                outcome.status == ImportStatus.FAILED ->
-                    getString(R.string.import_failed, outcome.fatal?.message.orEmpty())
-                outcome.status == ImportStatus.PARTIAL -> getString(
-                    R.string.import_done,
-                    outcome.created,
-                    outcome.skipped,
-                    outcome.conflicts,
-                    outcome.failed,
-                ) + getString(R.string.import_partial_suffix)
-                else -> getString(
-                    R.string.import_done,
-                    outcome.created,
-                    outcome.skipped,
-                    outcome.conflicts,
-                    outcome.failed,
-                )
-            }
-            Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-            loadDay()
-        }
-    }
-
-    /** SAF [ActivityResultContracts.CreateDocument] target: no storage permission is requested. */
-    private fun writeExport(uri: Uri, kind: ExportKind) {
-        lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val written = runCatching {
-                val events = repository.loadAll()
-                if (events.isEmpty()) return@runCatching false
-                withContext(AppGraph.ioDispatcher) {
-                    val now = Instant.now()
-                    val text = when (kind) {
-                        ExportKind.ICS -> IcsExporter.export(events, now)
-                        ExportKind.JSON -> JsonBackup.build(events, now)
-                    }
-                    val stream = contentResolver.openOutputStream(uri) ?: error("cannot open export target")
-                    stream.use { it.write(text.toByteArray(Charsets.UTF_8)) }
-                }
-                true
-            }
-            val message = when {
-                written.isFailure -> R.string.export_failed
-                written.getOrNull() == false -> R.string.export_empty
-                else -> R.string.export_done
-            }
-            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun loadDay() {
@@ -391,15 +217,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_DAY = "extra_day"
         private const val KEY_DAY = "selected_day"
-        private const val MENU_SYNC_SYSTEM = 4
-        private const val MENU_CONFLICTS = 5
-        private const val MENU_IMPORT_ICS = 1
-        private const val MENU_EXPORT_ICS = 2
-        private const val MENU_EXPORT_JSON = 3
-
         fun dayIntent(context: android.content.Context, day: LocalDate): Intent =
             Intent(context, MainActivity::class.java).putExtra(EXTRA_DAY, day.toString())
     }
-
-    private enum class ExportKind { ICS, JSON }
 }

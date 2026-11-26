@@ -212,7 +212,7 @@ class MonthActivityTest {
         val weekActivity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
         ShadowLooper.idleMainLooper()
         val weekBar = weekActivity.findViewById<LinearLayout>(R.id.tabBar)
-        assertEquals(4, weekBar.childCount)
+        assertEquals(5, weekBar.childCount)
 
         weekBar.getChildAt(1).performClick()
 

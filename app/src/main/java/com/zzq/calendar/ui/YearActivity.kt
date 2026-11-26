@@ -22,6 +22,7 @@ class YearActivity : AppCompatActivity() {
     private var loadGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityYearBinding.inflate(layoutInflater)
         setContentView(binding.root)

@@ -7,14 +7,17 @@ import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.appcompat.app.AppCompatDelegate
 import com.zzq.calendar.reminder.ReminderScheduler
 import com.zzq.calendar.sync.SyncWorker
+import com.zzq.calendar.ui.ThemePrefs
 import java.util.concurrent.TimeUnit
 
 class CalendarApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppCompatDelegate.setDefaultNightMode(ThemePrefs.nightMode(ThemePrefs.mode(this)))
         ReminderScheduler.channelReady(this)
         runCatching { AppGraph.reminders(this).reconcileAsync() }
         // PRD-05 §3.2: every foreground pass diffs the plan against what is actually scheduled.

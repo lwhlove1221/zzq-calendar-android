@@ -19,7 +19,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:textColor="@color/on_all_day_bg"
+            android:textColor="?attr/colorOnPrimaryContainer"
         android:textSize="15sp" />
 
     <TextView
@@ -27,6 +27,6 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="@dimen/spacing_small"
-        android:textColor="@color/on_all_day_bg"
+            android:textColor="?attr/colorOnPrimaryContainer"
         android:textSize="12sp" />
 </LinearLayout>
