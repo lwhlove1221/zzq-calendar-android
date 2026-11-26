@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.zzq.calendar.AppGraph
@@ -130,6 +131,29 @@ class SwipeNavigationTest {
         swipe(activity, dxDp = -200f, dyDp = 400f)
 
         assertEquals(before, activity.findViewById<TextView>(R.id.monthTitle).text.toString())
+    }
+
+    @Test
+    fun pageFollowsTheFingerBeforeRelease() {
+        val activity = Robolectric
+            .buildActivity(MonthActivity::class.java, MonthActivity.monthIntent(context, YearMonth.of(2026, 11)))
+            .setup()
+            .get()
+        shadowOf(activity.mainLooper).idle()
+        val pager = activity.findViewById<ViewGroup>(R.id.swipeSurface)
+        val page = pager.getChildAt(0)
+        val density = activity.resources.displayMetrics.density
+        val offset = -120f * density
+
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_DOWN, 600f, 300f))
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, 600f + offset / 2f, 300f))
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, 600f + offset, 300f))
+
+        assertEquals(offset, page.translationX, 1f)
+        assertEquals(
+            activity.getString(R.string.month_title, 2026, 11),
+            activity.findViewById<TextView>(R.id.monthTitle).text.toString(),
+        )
     }
 
     @Test

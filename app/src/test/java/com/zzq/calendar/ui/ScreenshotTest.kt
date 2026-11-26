@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import android.view.MotionEvent
+import android.view.ViewGroup
 import androidx.test.core.app.ApplicationProvider
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
@@ -11,9 +13,11 @@ import com.zzq.calendar.data.EventDraft
 import com.zzq.calendar.model.RepeatSpec
 import com.zzq.calendar.model.WallTime
 import java.io.File
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.YearMonth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -22,6 +26,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.SQLiteMode
@@ -200,6 +205,31 @@ class ScreenshotTest {
         } finally {
             org.robolectric.RuntimeEnvironment.setQualifiers("w360dp-h640dp-xhdpi")
         }
+    }
+
+    @Test
+    fun renderSwipeFrames() {
+        seedMonthEvents()
+        val activity = Robolectric
+            .buildActivity(MonthActivity::class.java, MonthActivity.monthIntent(context, YearMonth.of(2026, 11)))
+            .setup()
+            .get()
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        val pager = activity.findViewById<ViewGroup>(R.id.swipeSurface)
+        val density = activity.resources.displayMetrics.density
+        fun touch(action: Int, x: Float) =
+            pager.dispatchTouchEvent(MotionEvent.obtain(0L, 0L, action, x, 900f, 0))
+
+        touch(MotionEvent.ACTION_DOWN, 900f)
+        touch(MotionEvent.ACTION_MOVE, 900f - 60f * density)
+        touch(MotionEvent.ACTION_MOVE, 900f - 120f * density)
+        capture(activity, "swipe-drag.png")
+
+        touch(MotionEvent.ACTION_UP, 900f - 120f * density)
+        capture(activity, "swipe-enter.png")
+
+        shadowOf(activity.mainLooper).idleFor(Duration.ofMillis(400))
+        capture(activity, "swipe-settled.png")
     }
 
     @Test
