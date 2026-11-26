@@ -42,6 +42,12 @@ data class EventDraft(
     val writeBack: Boolean = true,
 )
 
+/** Month grid dots plus every instance overlapping the month, once per occurrence. */
+data class MonthAgenda(
+    val counts: Map<LocalDate, Int>,
+    val instances: List<EventInstance>,
+)
+
 class EventRepository(
     private val helper: CalendarDbHelper,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -192,6 +198,18 @@ class EventRepository(
                 }
             }
         }
+
+    suspend fun loadMonthAgenda(
+        month: YearMonth,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): MonthAgenda = withContext(ioDispatcher) {
+        val schedules = schedules(store.loadAll(), zone)
+        val days = (1..month.lengthOfMonth()).map { buildDay(schedules, month.atDay(it), zone) }
+        MonthAgenda(
+            counts = days.filter { it.instanceCount > 0 }.associate { it.day to it.instanceCount },
+            instances = days.flatMap { it.allDay + it.timed }.distinctBy { it.key },
+        )
+    }
 
     /** Seven consecutive days starting at [start] (Monday for the week view). */
     suspend fun loadWeek(start: LocalDate, zone: ZoneId = ZoneId.systemDefault()): List<DayAgenda> =

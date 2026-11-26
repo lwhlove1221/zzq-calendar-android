@@ -13,12 +13,18 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
+import com.zzq.calendar.data.MonthAgenda
 import com.zzq.calendar.databinding.ActivityMonthBinding
+import com.zzq.calendar.model.EventInstance
 import com.zzq.calendar.model.MonthCell
+import com.zzq.calendar.model.MonthAgendaGroups
+import com.zzq.calendar.model.MonthAgendaSplit
 import com.zzq.calendar.model.MonthGrid
+import java.time.Instant
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -32,6 +38,9 @@ class MonthActivity : AppCompatActivity() {
 
     private var month: YearMonth = YearMonth.now()
     private var loadGeneration = 0
+    private var remainingExpanded = true
+    private var completedExpanded = false
+    private var groups = MonthAgendaGroups(emptyList(), emptyList())
     private val syncHandler = Handler(Looper.getMainLooper())
     private val syncRunnable = Runnable { SystemSyncUi.refresh(this) { load() } }
     private val systemCalendarObserver = SystemCalendarObserver {
@@ -57,6 +66,8 @@ class MonthActivity : AppCompatActivity() {
         month = savedInstanceState?.getString(KEY_MONTH)?.let(YearMonth::parse)
             ?: intent.getStringExtra(EXTRA_MONTH)?.let(YearMonth::parse)
             ?: YearMonth.now(zone)
+        remainingExpanded = savedInstanceState?.getBoolean(KEY_REMAINING_EXPANDED) ?: true
+        completedExpanded = savedInstanceState?.getBoolean(KEY_COMPLETED_EXPANDED) ?: false
         binding.previousMonthButton.setOnClickListener { shiftMonth(-1) }
         binding.nextMonthButton.setOnClickListener { shiftMonth(1) }
         CalendarTabs.attach(
@@ -68,9 +79,17 @@ class MonthActivity : AppCompatActivity() {
             month = YearMonth.now(zone)
             load()
         }
+        binding.remainingHeader.setOnClickListener {
+            remainingExpanded = !remainingExpanded
+            renderGroups()
+        }
+        binding.completedHeader.setOnClickListener {
+            completedExpanded = !completedExpanded
+            renderGroups()
+        }
         buildWeekHeader()
         // Draw the date grid in the first frame; dots fill in when the load lands.
-        render(emptyMap())
+        render(MonthAgenda(emptyMap(), emptyList()))
         updatePermissionHint()
     }
 
@@ -96,6 +115,8 @@ class MonthActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString(KEY_MONTH, month.toString())
+        outState.putBoolean(KEY_REMAINING_EXPANDED, remainingExpanded)
+        outState.putBoolean(KEY_COMPLETED_EXPANDED, completedExpanded)
     }
 
     private fun shiftMonth(delta: Long) {
@@ -126,23 +147,31 @@ class MonthActivity : AppCompatActivity() {
         binding.monthTitle.text = getString(R.string.month_title, month.year, month.monthValue)
         val generation = ++loadGeneration
         lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val counts = runCatching { repository.loadMonth(month, zone) }.getOrDefault(emptyMap())
+            val agenda = runCatching { repository.loadMonthAgenda(month, zone) }
+                .getOrDefault(MonthAgenda(emptyMap(), emptyList()))
             if (generation != loadGeneration) return@launch
-            render(counts)
+            render(agenda)
         }
     }
 
-    private fun render(counts: Map<LocalDate, Int>) {
+    private fun render(agenda: MonthAgenda) {
+        renderGrid(agenda.counts)
+        groups = MonthAgendaSplit.split(agenda.instances, Instant.now(), zone)
+        renderGroups()
+    }
+
+    private fun renderGrid(counts: Map<LocalDate, Int>) {
         binding.monthGrid.removeAllViews()
         val cells = MonthGrid.cells(month)
         val today = LocalDate.now(zone)
         repeat(MonthGrid.ROWS) { row ->
             val rowView = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    0,
-                    1f,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
                 )
             }
             repeat(MonthGrid.COLUMNS) { column ->
@@ -154,15 +183,15 @@ class MonthActivity : AppCompatActivity() {
 
     private fun buildCell(cell: MonthCell, counts: Map<LocalDate, Int>, today: LocalDate): View {
         val count = counts[cell.date] ?: 0
-        val background = TypedValue()
-        theme.resolveAttribute(android.R.attr.selectableItemBackground, background, true)
+        val selectable = TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackground, selectable, true)
 
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            gravity = Gravity.CENTER
             minimumHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-            setBackgroundResource(background.resourceId)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundResource(selectable.resourceId)
             isClickable = true
             isFocusable = true
             contentDescription = if (count > 0) {
@@ -182,11 +211,14 @@ class MonthActivity : AppCompatActivity() {
             text = cell.date.dayOfMonth.toString()
             gravity = Gravity.CENTER
             textSize = 16f
-            setPadding(0, resources.getDimensionPixelSize(R.dimen.spacing_small) / 2, 0, 0)
             setTextColor(getColor(if (cell.inMonth) R.color.on_surface else R.color.hour_text))
-            if (cell.date == today) {
+            if (cell.inMonth && cell.date == today) {
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(getColor(R.color.primary))
+                setTextColor(getColor(R.color.current_time))
+                background = ContextCompat.getDrawable(this@MonthActivity, R.drawable.bg_today_circle)
+                minimumWidth = resources.getDimensionPixelSize(R.dimen.today_circle_size)
+                minimumHeight = resources.getDimensionPixelSize(R.dimen.today_circle_size)
+                setPadding(4.dp(), 0, 4.dp(), 0)
             }
         }
         val dots = TextView(this).apply {
@@ -197,12 +229,78 @@ class MonthActivity : AppCompatActivity() {
             text = if (count > 3) "●●●+" else "●".repeat(count)
         }
         container.addView(dayNumber)
-        container.addView(dots)
+        if (count > 0) container.addView(dots)
         return container
     }
 
+    private fun renderGroups() {
+        renderGroup(
+            header = binding.remainingHeader,
+            label = binding.remainingLabel,
+            chevron = binding.remainingChevron,
+            list = binding.remainingList,
+            empty = binding.remainingEmpty,
+            title = getString(R.string.month_group_remaining),
+            items = groups.remaining,
+            expanded = remainingExpanded,
+        )
+        renderGroup(
+            header = binding.completedHeader,
+            label = binding.completedLabel,
+            chevron = binding.completedChevron,
+            list = binding.completedList,
+            empty = binding.completedEmpty,
+            title = getString(R.string.month_group_completed),
+            items = groups.completed,
+            expanded = completedExpanded,
+        )
+    }
+
+    private fun renderGroup(
+        header: View,
+        label: TextView,
+        chevron: TextView,
+        list: LinearLayout,
+        empty: TextView,
+        title: String,
+        items: List<EventInstance>,
+        expanded: Boolean,
+    ) {
+        label.text = getString(R.string.month_group_label, title, items.size)
+        chevron.text = if (expanded) "▾" else "▸"
+        header.contentDescription = "$title，${items.size} 个日程，" +
+            getString(if (expanded) R.string.month_group_collapse else R.string.month_group_expand)
+        list.visibility = if (expanded) View.VISIBLE else View.GONE
+        empty.visibility = if (expanded && items.isEmpty()) View.VISIBLE else View.GONE
+        list.removeAllViews()
+        if (!expanded) return
+        items.forEach { list.addView(buildRow(it, list)) }
+    }
+
+    private fun buildRow(instance: EventInstance, parent: LinearLayout): View {
+        val row = layoutInflater.inflate(R.layout.item_month_agenda, parent, false)
+        val time = if (instance.allDay) UiFormat.allDayRange(instance) else UiFormat.timeRange(instance, zone)
+        val location = instance.master.location.trim()
+        row.findViewById<TextView>(R.id.eventTitle).text = instance.title
+        row.findViewById<TextView>(R.id.eventTime).text = time
+        row.findViewById<TextView>(R.id.eventLocation).apply {
+            text = location
+            visibility = if (location.isEmpty()) View.GONE else View.VISIBLE
+        }
+        row.contentDescription = listOfNotNull(instance.title, time, location.ifEmpty { null })
+            .joinToString("，")
+        row.setOnClickListener {
+            startActivity(MainActivity.dayIntent(this, instance.start.atZone(zone).toLocalDate()))
+        }
+        return row
+    }
+
+    private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
+
     companion object {
         private const val KEY_MONTH = "month"
+        private const val KEY_REMAINING_EXPANDED = "remaining_expanded"
+        private const val KEY_COMPLETED_EXPANDED = "completed_expanded"
         private const val EXTRA_MONTH = "extra_month"
 
         fun monthIntent(context: android.content.Context, month: YearMonth): android.content.Intent =
