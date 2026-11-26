@@ -81,7 +81,7 @@ class ViewSwitchTest {
     }
 
     @Test
-    fun tabBarOrderIsTodayWeekMonthYear() {
+    fun tabBarOrderIsTodayWeekMonthYearSettings() {
         val activity = Robolectric.buildActivity(WeekActivity::class.java).setup().get()
         val bar = activity.findViewById<LinearLayout>(R.id.tabBar)
         val expected = listOf(
@@ -89,6 +89,7 @@ class ViewSwitchTest {
             R.string.tab_week,
             R.string.tab_month,
             R.string.tab_year,
+            R.string.settings,
         ).map(activity::getString)
 
         val actual = (0 until bar.childCount)
@@ -115,10 +116,20 @@ class ViewSwitchTest {
         val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
         val bar = activity.findViewById<LinearLayout>(R.id.tabBar)
 
-        assertEquals(4, bar.childCount)
+        assertEquals(5, bar.childCount)
         val first = bar.getChildAt(0) as TextView
         assertEquals(activity.getString(R.string.today), first.text.toString())
         assertTrue(first.isSelected)
+    }
+
+    @Test
+    fun settingsTabOpensSettingsScreen() {
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+
+        clickTab(activity, R.string.settings)
+
+        val next = shadowOf(activity).nextStartedActivity
+        assertEquals(SettingsActivity::class.java.name, next.component?.className)
     }
 
     @Test

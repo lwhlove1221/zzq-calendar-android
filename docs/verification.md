@@ -65,3 +65,12 @@
 - `SwipeGestureTest`（6 条）：方向、阈值、纵向忽略、动画时长 ≤200ms、范围边界；`SwipeNavigationTest`（6 条）：日 / 周 / 月 / 年滑动翻页、纵向不翻页、2100-12 不越界；`ViewSwitchTest` 新增 Tab 顺序、今天跳日视图、日视图 Tab 选中、日视图切换保持锚点。
 - 离线执行 `:app:testDebugUnitTest :app:assembleDebug`：161 条测试全部通过，`app/build/outputs/apk/debug/app-debug.apk` 正常产出。
 - 未执行：真机滑动手感与动画帧率；adb 仍被用户占用，等通知后补。
+
+## 第 7 批：设置页 + 主题换肤（ZZQ-58）
+
+- 「设置」作为底部 Tab 第 5 项常驻，四个视图一步可达；设置页复用原日视图 ⋮ 的五个动作（同步系统日历 / 冲突记录 / 导入 .ics / 导出全部 .ics / 备份 JSON），逻辑与文件名规则未改，日视图 ⋮ 已删除。
+- 主题：`ThemePrefs`（SharedPreferences）保存 明暗（跟随系统 / 浅色 / 深色）× 强调色（蓝 / 绿 / 紫）；`AppCompatDelegate` 负责明暗，`theme.applyStyle` 叠加强调色 overlay；切换即时生效，冷启动由 `CalendarApp.onCreate` 恢复。
+- 颜色改为主题属性（`colorPrimary` / `colorOnPrimary` / `colorPrimaryContainer` / `colorOnPrimaryContainer`），日 / 周 / 月 / 年 / 设置与代码绘制的格子、事件条、圆点统一取色；今天红圈保持红色不变。
+- `ThemePrefsTest`（4 条）、`SettingsActivityTest`（5 条）、`ThemeScreenshotTest`（3 条渲染 9 种组合 + 四视图浅深 + 设置页浅深）；`AccessibilityTest` 扩到 3 套强调色的前景 / 背景对比度 ≥ 4.5:1。
+- 全量单测通过，`assembleDebug` 产出 `app/build/outputs/apk/debug/app-debug.apk`。
+- 未执行：OPPO 真机（`c7b32954`）在复测时离线（`adb devices` 无设备），深色下格子点 / 选中态 / 今天圈的肉眼可辨性只有 Robolectric 渲染与对比度断言，未做真机截图。

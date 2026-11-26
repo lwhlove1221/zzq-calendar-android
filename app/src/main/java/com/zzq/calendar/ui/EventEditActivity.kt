@@ -103,6 +103,7 @@ class EventEditActivity : AppCompatActivity() {
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityEventEditBinding.inflate(layoutInflater)
         setContentView(binding.root)

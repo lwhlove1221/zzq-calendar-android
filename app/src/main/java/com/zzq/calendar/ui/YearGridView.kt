@@ -46,18 +46,18 @@ class YearGridView @JvmOverloads constructor(
     }
     private val eventDayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 8.5f * density
-        color = ContextCompat.getColor(context, R.color.primary)
+        color = context.themeColor(com.google.android.material.R.attr.colorPrimary)
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }
     private val todayTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 8.5f * density
-        color = ContextCompat.getColor(context, R.color.on_primary)
+        color = context.themeColor(com.google.android.material.R.attr.colorOnPrimary)
         typeface = Typeface.DEFAULT_BOLD
         textAlign = Paint.Align.CENTER
     }
     private val todayCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.primary)
+        color = context.themeColor(com.google.android.material.R.attr.colorPrimary)
         style = Paint.Style.FILL
     }
 

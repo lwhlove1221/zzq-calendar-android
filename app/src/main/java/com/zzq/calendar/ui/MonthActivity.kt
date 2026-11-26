@@ -59,6 +59,7 @@ class MonthActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityMonthBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -225,7 +226,7 @@ class MonthActivity : AppCompatActivity() {
             textSize = 10f
             gravity = Gravity.CENTER
             maxLines = 1
-            setTextColor(getColor(R.color.primary))
+            setTextColor(themeColor(com.google.android.material.R.attr.colorPrimary))
             text = if (count > 3) "●●●+" else "●".repeat(count)
         }
         container.addView(dayNumber)

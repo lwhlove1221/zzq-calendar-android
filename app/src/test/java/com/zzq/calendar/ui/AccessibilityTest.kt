@@ -57,11 +57,16 @@ class AccessibilityTest {
     private fun assertDayContrast() {
         assertContrast(R.color.on_surface, R.color.surface)
         assertContrast(R.color.on_surface_variant, R.color.surface)
-        assertContrast(R.color.on_primary, R.color.primary)
-        assertContrast(R.color.on_event_blue, R.color.event_blue)
-        assertContrast(R.color.on_all_day_bg, R.color.all_day_bg)
         assertContrast(R.color.hour_text, R.color.surface)
         assertContrast(R.color.error, R.color.surface)
+        listOf(
+            R.color.on_accent_blue to R.color.accent_blue,
+            R.color.on_accent_soft_blue to R.color.accent_soft_blue,
+            R.color.on_accent_green to R.color.accent_green,
+            R.color.on_accent_soft_green to R.color.accent_soft_green,
+            R.color.on_accent_purple to R.color.accent_purple,
+            R.color.on_accent_soft_purple to R.color.accent_soft_purple,
+        ).forEach { (foreground, background) -> assertContrast(foreground, background) }
     }
 
     @Test

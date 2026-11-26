@@ -12,4 +12,25 @@
         <item name="android:windowMinWidthMajor">90%</item>
         <item name="android:windowMinWidthMinor">90%</item>
     </style>
+
+    <style name="ThemeOverlay.Calendar.Accent.Blue" parent="">
+        <item name="colorPrimary">@color/accent_blue</item>
+        <item name="colorOnPrimary">@color/on_accent_blue</item>
+        <item name="colorPrimaryContainer">@color/accent_soft_blue</item>
+        <item name="colorOnPrimaryContainer">@color/on_accent_soft_blue</item>
+    </style>
+
+    <style name="ThemeOverlay.Calendar.Accent.Green" parent="">
+        <item name="colorPrimary">@color/accent_green</item>
+        <item name="colorOnPrimary">@color/on_accent_green</item>
+        <item name="colorPrimaryContainer">@color/accent_soft_green</item>
+        <item name="colorOnPrimaryContainer">@color/on_accent_soft_green</item>
+    </style>
+
+    <style name="ThemeOverlay.Calendar.Accent.Purple" parent="">
+        <item name="colorPrimary">@color/accent_purple</item>
+        <item name="colorOnPrimary">@color/on_accent_purple</item>
+        <item name="colorPrimaryContainer">@color/accent_soft_purple</item>
+        <item name="colorOnPrimaryContainer">@color/on_accent_soft_purple</item>
+    </style>
 </resources>

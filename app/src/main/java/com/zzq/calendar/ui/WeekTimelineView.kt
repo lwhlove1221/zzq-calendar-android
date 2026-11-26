@@ -41,9 +41,9 @@ class WeekTimelineView @JvmOverloads constructor(
     private val surfaceColor = ContextCompat.getColor(context, R.color.surface)
     private val hourTextColor = ContextCompat.getColor(context, R.color.hour_text)
     private val gridColor = ContextCompat.getColor(context, R.color.grid_line)
-    private val blockColor = ContextCompat.getColor(context, R.color.event_blue)
-    private val onBlockColor = ContextCompat.getColor(context, R.color.on_event_blue)
-    private val todayTintColor = ContextCompat.getColor(context, R.color.today_tint)
+    private val blockColor = context.themeColor(com.google.android.material.R.attr.colorPrimary)
+    private val onBlockColor = context.themeColor(com.google.android.material.R.attr.colorOnPrimary)
+    private val todayTintColor = context.themeColor(com.google.android.material.R.attr.colorPrimaryContainer)
 
     private val hourPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = sp(10f)

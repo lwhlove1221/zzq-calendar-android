@@ -29,6 +29,7 @@ class WeekActivity : AppCompatActivity() {
     private var loadGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityWeekBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -124,20 +125,20 @@ class WeekActivity : AppCompatActivity() {
                 text = MonthGrid.weekdayLabels[index]
                 gravity = Gravity.CENTER
                 textSize = 11f
-                setTextColor(getColor(if (isToday) R.color.primary else R.color.on_surface_variant))
+                setTextColor(if (isToday) themeColor(com.google.android.material.R.attr.colorPrimary) else getColor(R.color.on_surface_variant))
             }
             val number = TextView(this).apply {
                 text = agenda.day.dayOfMonth.toString()
                 gravity = Gravity.CENTER
                 textSize = 15f
-                setTextColor(getColor(if (isToday) R.color.primary else R.color.on_surface))
+                setTextColor(if (isToday) themeColor(com.google.android.material.R.attr.colorPrimary) else getColor(R.color.on_surface))
                 if (isToday) setTypeface(typeface, Typeface.BOLD)
             }
             val dot = TextView(this).apply {
                 text = if (agenda.allDay.isEmpty()) "" else "●"
                 gravity = Gravity.CENTER
                 textSize = 9f
-                setTextColor(getColor(R.color.primary))
+                setTextColor(themeColor(com.google.android.material.R.attr.colorPrimary))
             }
             cell.addView(weekday)
             cell.addView(number)
