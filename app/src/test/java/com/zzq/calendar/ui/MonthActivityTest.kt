@@ -1,5 +1,7 @@
 package com.zzq.calendar.ui
 
+import android.Manifest
+import android.app.Application
 import android.content.Context
 import android.view.View
 import android.view.ViewGroup
@@ -104,6 +106,25 @@ class MonthActivityTest {
 
         val title = activity.findViewById<TextView>(R.id.monthTitle)
         assertEquals(getString(activity, R.string.month_title, next.year, next.monthValue), title.text.toString())
+    }
+
+    @Test
+    fun `no calendar permission still opens the month view and shows the hint`() {
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+
+        assertEquals(View.VISIBLE, activity.findViewById<View>(R.id.calendarHint).visibility)
+        assertEquals(MonthGrid.ROWS, activity.findViewById<LinearLayout>(R.id.monthGrid).childCount)
+    }
+
+    @Test
+    fun `calendar permission hides the hint`() {
+        Shadows.shadowOf(context as Application).grantPermissions(Manifest.permission.READ_CALENDAR)
+
+        val activity = Robolectric.buildActivity(MonthActivity::class.java).setup().get()
+        ShadowLooper.idleMainLooper()
+
+        assertEquals(View.GONE, activity.findViewById<View>(R.id.calendarHint).visibility)
     }
 
     @Test

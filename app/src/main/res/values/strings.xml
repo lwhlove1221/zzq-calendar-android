@@ -95,6 +95,7 @@
     <string name="import_interrupted">上次导入未完成，已丢弃未提交的数据</string>
 
     <string name="sync_permission">需要日历读取权限才能同步系统日历</string>
+    <string name="calendar_permission_hint">未授予日历权限，仅显示本地日程；到系统设置授权后可自动同步系统日历</string>
     <string name="sync_failed">系统日历同步失败</string>
     <string name="sync_conflicts">冲突记录</string>
     <string name="sync_conflict_title">日历同步冲突</string>

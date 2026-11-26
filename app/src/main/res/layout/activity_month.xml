@@ -53,6 +53,18 @@
         android:paddingTop="@dimen/spacing_small"
         android:paddingEnd="@dimen/screen_padding" />
 
+    <TextView
+        android:id="@+id/calendarHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/screen_padding"
+        android:paddingTop="@dimen/spacing_small"
+        android:paddingEnd="@dimen/screen_padding"
+        android:text="@string/calendar_permission_hint"
+        android:textColor="@color/on_surface_variant"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/monthGrid"
         android:layout_width="match_parent"

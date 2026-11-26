@@ -1,15 +1,17 @@
 package com.zzq.calendar.ui
 
+import android.Manifest
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.CalendarContract
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
@@ -36,6 +38,16 @@ class MonthActivity : AppCompatActivity() {
         syncHandler.removeCallbacks(syncRunnable)
         syncHandler.postDelayed(syncRunnable, 800)
     }
+    private val readPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                SystemSyncUi.startWatching(this, systemCalendarObserver)
+                SystemSyncUi.refresh(this) { load() }
+            } else {
+                Toast.makeText(this, R.string.sync_permission, Toast.LENGTH_LONG).show()
+            }
+            updatePermissionHint()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,21 +75,19 @@ class MonthActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        updatePermissionHint()
         load()
         SystemSyncUi.refresh(this) { load() }
     }
 
     override fun onStart() {
         super.onStart()
-        contentResolver.registerContentObserver(
-            CalendarContract.Events.CONTENT_URI,
-            true,
-            systemCalendarObserver,
-        )
+        SystemSyncUi.startWatching(this, systemCalendarObserver)
+        SystemSyncUi.askReadOnce(this, readPermission)
     }
 
     override fun onStop() {
-        contentResolver.unregisterContentObserver(systemCalendarObserver)
+        SystemSyncUi.stopWatching(this, systemCalendarObserver)
         syncHandler.removeCallbacks(syncRunnable)
         super.onStop()
     }
@@ -90,6 +100,10 @@ class MonthActivity : AppCompatActivity() {
     private fun shiftMonth(delta: Long) {
         month = month.plusMonths(delta)
         load()
+    }
+
+    private fun updatePermissionHint() {
+        binding.calendarHint.visibility = if (SystemSyncUi.hasRead(this)) View.GONE else View.VISIBLE
     }
 
     private fun buildWeekHeader() {

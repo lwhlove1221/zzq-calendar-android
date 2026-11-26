@@ -6,7 +6,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.CalendarContract
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.LinearLayout
@@ -63,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private val syncPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
+                SystemSyncUi.startWatching(this, systemCalendarObserver)
                 syncFromSystem()
             } else {
                 Toast.makeText(this, R.string.sync_permission, Toast.LENGTH_LONG).show()
@@ -109,15 +109,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        contentResolver.registerContentObserver(
-            CalendarContract.Events.CONTENT_URI,
-            true,
-            systemCalendarObserver,
-        )
+        SystemSyncUi.startWatching(this, systemCalendarObserver)
+        SystemSyncUi.askReadOnce(this, syncPermission)
     }
 
     override fun onStop() {
-        contentResolver.unregisterContentObserver(systemCalendarObserver)
+        SystemSyncUi.stopWatching(this, systemCalendarObserver)
         syncHandler.removeCallbacks(syncRunnable)
         super.onStop()
     }
