@@ -1,6 +1,8 @@
 package com.zzq.calendar.ui
 
 import android.content.Context
+import android.view.MotionEvent
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -129,6 +131,32 @@ class ViewSwitchTest {
 
         val next = shadowOf(activity).nextStartedActivity
         assertEquals(day.toString(), next.getStringExtra("extra_date"))
+    }
+
+    @Test
+    fun monthTabAfterWeekSwipeUsesTheNewWeekStartAsAnchor() {
+        val start = LocalDate.of(2026, 11, 30)
+        val intent = WeekActivity.weekIntent(context, start)
+        val activity = Robolectric.buildActivity(WeekActivity::class.java, intent).setup().get()
+
+        swipe(activity, -200f)
+        clickTab(activity, R.string.tab_month)
+
+        val next = shadowOf(activity).nextStartedActivity
+        assertEquals("2026-12", next.getStringExtra("extra_month"))
+    }
+
+    private fun swipe(activity: AppCompatActivity, dxDp: Float) {
+        val pager = activity.findViewById<View>(R.id.swipeSurface)
+        val density = activity.resources.displayMetrics.density
+        val startX = 600f
+        val startY = 300f
+        val endX = startX + dxDp * density
+        fun event(action: Int, x: Float) = MotionEvent.obtain(0L, 0L, action, x, startY, 0)
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_DOWN, startX))
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_MOVE, (startX + endX) / 2f))
+        pager.dispatchTouchEvent(event(MotionEvent.ACTION_UP, endX))
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
     }
 
     private fun clickTab(activity: AppCompatActivity, labelRes: Int) {
