@@ -279,7 +279,12 @@ class MonthActivity : AppCompatActivity() {
 
     private fun buildRow(instance: EventInstance, parent: LinearLayout): View {
         val row = layoutInflater.inflate(R.layout.item_month_agenda, parent, false)
-        val time = if (instance.allDay) UiFormat.allDayRange(instance) else UiFormat.timeRange(instance, zone)
+        val startDate = instance.start.atZone(zone).toLocalDate()
+        val time = when {
+            !instance.allDay -> "${UiFormat.shortDate(startDate)} ${UiFormat.timeRange(instance, zone)}"
+            UiFormat.isSingleDayAllDay(instance) -> "${UiFormat.shortDate(startDate)} 全天"
+            else -> UiFormat.allDayRange(instance)
+        }
         val location = instance.master.location.trim()
         row.findViewById<TextView>(R.id.eventTitle).text = instance.title
         row.findViewById<TextView>(R.id.eventTime).text = time
@@ -290,7 +295,7 @@ class MonthActivity : AppCompatActivity() {
         row.contentDescription = listOfNotNull(instance.title, time, location.ifEmpty { null })
             .joinToString("，")
         row.setOnClickListener {
-            startActivity(MainActivity.dayIntent(this, instance.start.atZone(zone).toLocalDate()))
+            startActivity(MainActivity.dayIntent(this, startDate))
         }
         return row
     }

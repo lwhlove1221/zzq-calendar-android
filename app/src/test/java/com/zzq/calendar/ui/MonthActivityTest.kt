@@ -174,6 +174,10 @@ class MonthActivityTest {
             "月中会议",
             list.getChildAt(1).findViewById<TextView>(R.id.eventTitle).text.toString(),
         )
+        assertTrue(
+            list.getChildAt(0).findViewById<TextView>(R.id.eventTime).text.toString()
+                .startsWith(UiFormat.shortDate(pastMonth.atDay(1))),
+        )
     }
 
     @Test
