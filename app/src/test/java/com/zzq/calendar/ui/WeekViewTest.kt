@@ -23,6 +23,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.SQLiteMode
@@ -53,10 +54,10 @@ class WeekViewTest {
     }
 
     @Test
-    fun `week shows seven day headers and event bars in columns`() {
+    fun `week shows seven readable day rows inside one screen`() {
         val today = LocalDate.now(zone)
         seed("产品评审", today, 9)
-        seed("客户电话", today.plusDays(1), 10)
+        seed("客户电话", today, 10)
 
         val activity = Robolectric.buildActivity(
             WeekActivity::class.java,
@@ -65,27 +66,75 @@ class WeekViewTest {
         ShadowLooper.idleMainLooper()
         layout(activity)
 
-        val header = activity.findViewById<LinearLayout>(R.id.dayHeaderRow)
-        assertEquals(7, header.childCount)
-        assertEquals(
-            WeekActivity.mondayOf(today).dayOfMonth,
-            ((header.getChildAt(0) as LinearLayout).getChildAt(1) as TextView).text.toString().toInt(),
+        val rows = activity.findViewById<LinearLayout>(R.id.weekRows)
+        assertEquals(7, rows.childCount)
+        val monday = WeekActivity.mondayOf(today)
+        assertTrue(
+            "monday day number missing: ${texts(rows.getChildAt(0))}",
+            texts(rows.getChildAt(0)).contains(monday.dayOfMonth.toString()),
+        )
+        val density = activity.resources.displayMetrics.density
+        repeat(7) { index ->
+            val row = rows.getChildAt(index)
+            assertTrue("row $index height=${row.height}", row.height >= 44 * density)
+        }
+        assertTrue(
+            "week rows ${rows.height} exceed viewport ${(rows.parent as View).height}",
+            rows.height <= (rows.parent as View).height,
         )
 
-        val timeline = activity.findViewById<WeekTimelineView>(R.id.weekTimeline)
-        val columns = timeline.columnsForTest()
-        assertEquals(7, columns.size)
-        val columnWidth = columns[1] - columns[0]
-        val bars = timeline.visualBarsForTest()
-        assertEquals(2, bars.size)
-        bars.forEach { bar ->
-            val column = ((bar.centerX() - columns.first()) / columnWidth).toInt()
-            assertTrue("bar outside week columns: $bar", column in 0..6)
+        val todayRow = rows.getChildAt(today.dayOfWeek.value - 1)
+        val todayLines = texts(todayRow)
+        assertTrue("today titles=$todayLines", todayLines.any { it.contains("产品评审") && it.contains("09:00") })
+        assertTrue("today titles=$todayLines", todayLines.any { it.contains("客户电话") && it.contains("10:00") })
+        val emptyRow = rows.getChildAt((today.dayOfWeek.value) % 7)
+        if (emptyRow != todayRow) {
+            assertTrue("empty row=${texts(emptyRow)}", texts(emptyRow).contains("无日程"))
         }
     }
 
     @Test
-    fun `tapping a day header opens the day view`() {
+    fun `a crowded day keeps three lines and counts the rest`() {
+        val today = LocalDate.now(zone)
+        repeat(5) { index -> seed("会议$index", today, 9 + index) }
+
+        val activity = Robolectric.buildActivity(
+            WeekActivity::class.java,
+            WeekActivity.weekIntent(context, today),
+        ).setup().get()
+        ShadowLooper.idleMainLooper()
+        layout(activity)
+
+        val rows = activity.findViewById<LinearLayout>(R.id.weekRows)
+        val crowdedLines = texts(rows.getChildAt(today.dayOfWeek.value - 1))
+        assertEquals(3, crowdedLines.count { it.contains("会议") })
+        assertTrue("crowded lines=$crowdedLines", crowdedLines.contains("+2 条"))
+    }
+
+    @Test
+    fun `large font keeps fewer lines plus the overflow count`() {
+        val today = LocalDate.now(zone)
+        repeat(5) { index -> seed("会议$index", today, 9 + index) }
+        RuntimeEnvironment.setFontScale(2f)
+        try {
+            val activity = Robolectric.buildActivity(
+                WeekActivity::class.java,
+                WeekActivity.weekIntent(context, today),
+            ).setup().get()
+            ShadowLooper.idleMainLooper()
+            layout(activity)
+
+            val rows = activity.findViewById<LinearLayout>(R.id.weekRows)
+            val crowdedLines = texts(rows.getChildAt(today.dayOfWeek.value - 1))
+            assertEquals(1, crowdedLines.count { it.contains("会议") })
+            assertTrue("crowded lines=$crowdedLines", crowdedLines.contains("+4 条"))
+        } finally {
+            RuntimeEnvironment.setFontScale(1f)
+        }
+    }
+
+    @Test
+    fun `tapping a day row opens the day view`() {
         val today = LocalDate.now(zone)
         val activity = Robolectric.buildActivity(
             WeekActivity::class.java,
@@ -93,8 +142,8 @@ class WeekViewTest {
         ).setup().get()
         ShadowLooper.idleMainLooper()
 
-        val header = activity.findViewById<LinearLayout>(R.id.dayHeaderRow)
-        header.getChildAt(0).performClick()
+        val rows = activity.findViewById<LinearLayout>(R.id.weekRows)
+        rows.getChildAt(0).performClick()
 
         val started = Shadows.shadowOf(activity).nextStartedActivity
         assertEquals(MainActivity::class.java.name, started.component?.className)
@@ -154,6 +203,12 @@ class WeekViewTest {
                 ),
             )
         }
+    }
+
+    private fun texts(view: View): List<String> = when (view) {
+        is TextView -> listOf(view.text.toString())
+        is android.view.ViewGroup -> (0 until view.childCount).flatMap { texts(view.getChildAt(it)) }
+        else -> emptyList()
     }
 
     private companion object {

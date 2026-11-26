@@ -2,20 +2,29 @@ package com.zzq.calendar.ui
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.zzq.calendar.AppGraph
 import com.zzq.calendar.R
 import com.zzq.calendar.databinding.ActivityWeekBinding
 import com.zzq.calendar.model.DayAgenda
+import com.zzq.calendar.model.EventInstance
 import com.zzq.calendar.model.MonthGrid
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.launch
 
@@ -24,6 +33,10 @@ class WeekActivity : AppCompatActivity() {
     private lateinit var binding: ActivityWeekBinding
     private val repository by lazy { AppGraph.repository(this) }
     private val zone: ZoneId get() = ZoneId.systemDefault()
+    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    // Rows split the screen evenly (7 days, one screen); large fonts get fewer lines, never clipped ones.
+    private val maxEventLines: Int
+        get() = if (resources.configuration.fontScale > 1.5f) 1 else MAX_EVENT_LINES
 
     private var weekStart: LocalDate = mondayOf(LocalDate.now())
     private var loadGeneration = 0
@@ -39,9 +52,6 @@ class WeekActivity : AppCompatActivity() {
 
         binding.previousWeekButton.setOnClickListener { shiftWeek(-1) }
         binding.nextWeekButton.setOnClickListener { shiftWeek(1) }
-        binding.weekTimeline.onEventClick = { instance ->
-            startActivity(MainActivity.dayIntent(this, instance.start.atZone(zone).toLocalDate()))
-        }
         CalendarTabs.attach(this, binding.tabBar, CalendarTabs.Tab.WEEK, anchor = { weekStart })
         SwipeNavigator.attach(this, canNavigate = { CalendarRange.canShiftWeek(weekStart, it) }) {
             shiftWeek(CalendarRange.deltaDays(it))
@@ -90,8 +100,7 @@ class WeekActivity : AppCompatActivity() {
             val days = runCatching { repository.loadWeek(weekStart, zone) }.getOrNull()
             if (generation != loadGeneration) return@launch
             if (days == null) {
-                binding.dayHeaderRow.removeAllViews()
-                binding.weekTimeline.submit(emptyList(), zone)
+                binding.weekRows.removeAllViews()
                 return@launch
             }
             render(days)
@@ -99,55 +108,126 @@ class WeekActivity : AppCompatActivity() {
     }
 
     private fun render(days: List<DayAgenda>) {
-        binding.dayHeaderRow.removeAllViews()
+        binding.weekRows.removeAllViews()
         val today = LocalDate.now(zone)
-        days.forEachIndexed { index, agenda ->
-            val isToday = agenda.day == today
-            val cell = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                isClickable = true
-                isFocusable = true
-                val background = TypedValue()
-                theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, background, true)
-                setBackgroundResource(background.resourceId)
-                contentDescription = getString(
-                    R.string.week_day_description,
-                    agenda.day.monthValue,
-                    agenda.day.dayOfMonth,
-                    agenda.instanceCount,
-                )
-                setOnClickListener { startActivity(MainActivity.dayIntent(this@WeekActivity, agenda.day)) }
-            }
-            val weekday = TextView(this).apply {
-                text = MonthGrid.weekdayLabels[index]
+        days.forEach { agenda ->
+            binding.weekRows.addView(buildDayRow(agenda, agenda.day == today))
+        }
+    }
+
+    /** One row per day so all seven days stay on one screen; overflowing events collapse to a count. */
+    private fun buildDayRow(agenda: DayAgenda, isToday: Boolean): View {
+        val selectable = TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackground, selectable, true)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ).apply { bottomMargin = 6.dp() }
+            minimumHeight = 56.dp()
+            setPadding(12.dp(), 6.dp(), 12.dp(), 6.dp())
+            setBackgroundResource(R.drawable.bg_agenda_card)
+            foreground = ContextCompat.getDrawable(this@WeekActivity, selectable.resourceId)
+            isClickable = true
+            isFocusable = true
+            contentDescription = getString(
+                R.string.week_day_description,
+                agenda.day.monthValue,
+                agenda.day.dayOfMonth,
+                agenda.instanceCount,
+            )
+            setOnClickListener { startActivity(MainActivity.dayIntent(this@WeekActivity, agenda.day)) }
+        }
+
+        val dateBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(48.dp(), LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        dateBlock.addView(
+            TextView(this).apply {
+                text = MonthGrid.weekdayLabels[agenda.day.dayOfWeek.value - 1]
                 gravity = Gravity.CENTER
                 textSize = 11f
                 setTextColor(getColor(if (isToday) R.color.primary else R.color.on_surface_variant))
-            }
-            val number = TextView(this).apply {
+            },
+        )
+        dateBlock.addView(
+            TextView(this).apply {
                 text = agenda.day.dayOfMonth.toString()
                 gravity = Gravity.CENTER
-                textSize = 15f
-                setTextColor(getColor(if (isToday) R.color.primary else R.color.on_surface))
-                if (isToday) setTypeface(typeface, Typeface.BOLD)
-            }
-            val dot = TextView(this).apply {
-                text = if (agenda.allDay.isEmpty()) "" else "●"
-                gravity = Gravity.CENTER
-                textSize = 9f
-                setTextColor(getColor(R.color.primary))
-            }
-            cell.addView(weekday)
-            cell.addView(number)
-            cell.addView(dot)
-            binding.dayHeaderRow.addView(cell)
+                textSize = 17f
+                setTextColor(getColor(if (isToday) R.color.current_time else R.color.on_surface))
+                setTypeface(typeface, Typeface.BOLD)
+                if (isToday) {
+                    background = ContextCompat.getDrawable(this@WeekActivity, R.drawable.bg_today_circle)
+                    minimumWidth = resources.getDimensionPixelSize(R.dimen.today_circle_size)
+                    minimumHeight = resources.getDimensionPixelSize(R.dimen.today_circle_size)
+                }
+            },
+        )
+        row.addView(dateBlock)
+
+        val events = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(12.dp(), 0, 0, 0)
         }
-        binding.weekTimeline.submit(days, zone)
+        val instances = agenda.allDay + agenda.timed
+        instances.take(maxEventLines).forEach { events.addView(buildEventLine(it)) }
+        if (instances.size > maxEventLines) {
+            events.addView(
+                TextView(this).apply {
+                    text = getString(R.string.week_more_events, instances.size - maxEventLines)
+                    textSize = 11f
+                    setTextColor(getColor(R.color.primary))
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                },
+            )
+        }
+        if (instances.isEmpty()) {
+            events.addView(
+                TextView(this).apply {
+                    text = getString(R.string.week_no_events)
+                    textSize = 11f
+                    setTextColor(getColor(R.color.hour_text))
+                },
+            )
+        }
+        row.addView(events)
+        return row
     }
 
+    private fun buildEventLine(instance: EventInstance): TextView {
+        val label = if (instance.allDay) {
+            getString(R.string.all_day_label)
+        } else {
+            LocalDateTime.ofInstant(instance.start, zone).format(timeFormatter)
+        }
+        val line = SpannableStringBuilder(label).append("  ").append(instance.title)
+        line.setSpan(
+            ForegroundColorSpan(getColor(R.color.on_surface_variant)),
+            0,
+            label.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        return TextView(this).apply {
+            text = line
+            textSize = 12f
+            setTextColor(getColor(R.color.on_surface))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+    }
+
+    private fun Int.dp(): Int = (this * resources.displayMetrics.density).toInt()
+
     companion object {
+        private const val MAX_EVENT_LINES = 3
         private const val KEY_WEEK = "week_start"
         private const val EXTRA_DATE = "extra_date"
 

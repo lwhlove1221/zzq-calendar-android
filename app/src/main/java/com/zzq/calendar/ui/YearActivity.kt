@@ -65,13 +65,13 @@ class YearActivity : AppCompatActivity() {
         binding.yearTitle.text = getString(R.string.year_title, year)
         val generation = ++loadGeneration
         lifecycleScope.launch(AppGraph.mainDispatcher) {
-            val days = runCatching {
-                (1..12).flatMap { month ->
-                    repository.loadMonth(YearMonth.of(year, month), zone).keys
-                }.toSet()
+            val counts = runCatching {
+                (1..12).associateWith { month ->
+                    repository.loadMonth(YearMonth.of(year, month), zone).values.sum()
+                }
             }.getOrNull()
             if (generation != loadGeneration) return@launch
-            binding.yearGrid.submit(year, days.orEmpty(), LocalDate.now(zone))
+            binding.yearGrid.submit(year, counts.orEmpty(), LocalDate.now(zone))
         }
     }
 

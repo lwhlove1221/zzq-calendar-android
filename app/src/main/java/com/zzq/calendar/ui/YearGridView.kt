@@ -11,12 +11,13 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.ContextCompat
 import com.zzq.calendar.R
-import com.zzq.calendar.model.MonthGrid
 import java.time.LocalDate
 import java.time.YearMonth
-import kotlin.math.min
 
-/** Twelve mini month calendars; a whole month cell is the tap target. */
+/**
+ * Twelve month tiles with an event count; a whole tile is the tap target.
+ * Month cells never expand to days — that text was unreadable at 3 columns.
+ */
 class YearGridView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
@@ -25,44 +26,42 @@ class YearGridView @JvmOverloads constructor(
 
     var onMonthClick: ((YearMonth) -> Unit)? = null
 
-    private val density = resources.displayMetrics.density
-    private val cellGap = 6f * density
+    private val dpScale = resources.displayMetrics.density
+    private val cellGap = 6f * dpScale
 
     private val monthTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        // dp text keeps the dense overview stable at 200% font.
-        textSize = 11f * density
+        setTextSize(24f * dpScale)
         color = ContextCompat.getColor(context, R.color.on_surface)
         typeface = Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
     }
-    private val weekdayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 7.5f * density
+    private val countTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        setTextSize(15f * dpScale)
+        color = ContextCompat.getColor(context, R.color.primary)
+        textAlign = Paint.Align.CENTER
+    }
+    private val emptyTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        setTextSize(15f * dpScale)
         color = ContextCompat.getColor(context, R.color.hour_text)
         textAlign = Paint.Align.CENTER
     }
-    private val dayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 8.5f * density
-        color = ContextCompat.getColor(context, R.color.on_surface)
-        textAlign = Paint.Align.CENTER
+    private val cardStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ContextCompat.getColor(context, R.color.grid_line)
+        style = Paint.Style.STROKE
+        strokeWidth = 1f * dpScale
     }
-    private val eventDayPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 8.5f * density
+    private val currentMonthStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ContextCompat.getColor(context, R.color.primary)
-        typeface = Typeface.DEFAULT_BOLD
-        textAlign = Paint.Align.CENTER
+        style = Paint.Style.STROKE
+        strokeWidth = 1.5f * dpScale
     }
-    private val todayTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 8.5f * density
-        color = ContextCompat.getColor(context, R.color.on_primary)
-        typeface = Typeface.DEFAULT_BOLD
-        textAlign = Paint.Align.CENTER
-    }
-    private val todayCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.primary)
+    private val currentMonthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ContextCompat.getColor(context, R.color.today_tint)
         style = Paint.Style.FILL
     }
 
     private var year: Int = LocalDate.now().year
-    private var eventDays: Set<LocalDate> = emptySet()
+    private var monthCounts: Map<Int, Int> = emptyMap()
     private var today: LocalDate = LocalDate.now()
     private val monthRects = mutableListOf<Pair<YearMonth, RectF>>()
 
@@ -71,9 +70,9 @@ class YearGridView @JvmOverloads constructor(
         isFocusable = true
     }
 
-    fun submit(newYear: Int, daysWithEvents: Set<LocalDate>, todayDate: LocalDate) {
+    fun submit(newYear: Int, counts: Map<Int, Int>, todayDate: LocalDate) {
         year = newYear
-        eventDays = daysWithEvents
+        monthCounts = counts
         today = todayDate
         contentDescription = context.getString(R.string.year_description, newYear)
         requestLayout()
@@ -82,7 +81,7 @@ class YearGridView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = resolveSize(suggestedMinimumWidth, widthMeasureSpec)
-        val desiredHeight = (4 * 120 * density).toInt() + paddingTop + paddingBottom
+        val desiredHeight = (4 * 120 * dpScale).toInt() + paddingTop + paddingBottom
         setMeasuredDimension(width, resolveSize(desiredHeight, heightMeasureSpec))
     }
 
@@ -109,46 +108,36 @@ class YearGridView @JvmOverloads constructor(
     }
 
     private fun drawMonth(canvas: Canvas, month: YearMonth, rect: RectF) {
+        val isCurrentMonth = month.year == today.year && month.monthValue == today.monthValue
+        val radius = 12f * dpScale
+        if (isCurrentMonth) canvas.drawRoundRect(rect, radius, radius, currentMonthPaint)
+        canvas.drawRoundRect(rect, radius, radius, if (isCurrentMonth) currentMonthStrokePaint else cardStrokePaint)
+
+        val count = monthCounts[month.monthValue] ?: 0
+        val monthSize = monthTextPaint.textSize
+        val countSize = countTextPaint.textSize
+        val gap = 8f * dpScale
+        val firstBaseline = rect.centerY() - (monthSize + gap + countSize) / 2f + monthSize
+        monthTextPaint.color = ContextCompat.getColor(
+            context,
+            if (isCurrentMonth) R.color.primary else R.color.on_surface,
+        )
         canvas.drawText(
-            "${month.monthValue}月",
-            rect.left + 2f * density,
-            rect.top + monthTextPaint.textSize,
+            context.getString(R.string.year_month_label, month.monthValue),
+            rect.centerX(),
+            firstBaseline,
             monthTextPaint,
         )
-
-        val gridLeft = rect.left
-        val gridWidth = rect.width()
-        val gridTop = rect.top + monthTextPaint.textSize + 4f * density
-        val columnWidth = gridWidth / 7f
-        MonthGrid.weekdayLabels.forEachIndexed { index, label ->
-            canvas.drawText(
-                label,
-                gridLeft + (index + 0.5f) * columnWidth,
-                gridTop + weekdayPaint.textSize,
-                weekdayPaint,
-            )
-        }
-
-        val daysTop = gridTop + weekdayPaint.textSize + 2f * density
-        val rowHeight = (rect.bottom - daysTop) / MonthGrid.ROWS
-        if (rowHeight <= 0f) return
-        MonthGrid.cells(month).forEachIndexed { index, cell ->
-            if (!cell.inMonth) return@forEachIndexed
-            val column = index % 7
-            val row = index / 7
-            val centerX = gridLeft + (column + 0.5f) * columnWidth
-            val centerY = daysTop + row * rowHeight + rowHeight / 2f
-            val text = cell.date.dayOfMonth.toString()
-            val baseline = centerY + dayPaint.textSize / 3f
-            when {
-                cell.date == today -> {
-                    canvas.drawCircle(centerX, centerY, min(columnWidth, rowHeight) * 0.42f, todayCirclePaint)
-                    canvas.drawText(text, centerX, baseline, todayTextPaint)
-                }
-                cell.date in eventDays -> canvas.drawText(text, centerX, baseline, eventDayPaint)
-                else -> canvas.drawText(text, centerX, baseline, dayPaint)
-            }
-        }
+        canvas.drawText(
+            if (count > 0) {
+                context.getString(R.string.year_month_count, count)
+            } else {
+                context.getString(R.string.year_month_empty)
+            },
+            rect.centerX(),
+            firstBaseline + gap + countSize,
+            if (count > 0) countTextPaint else emptyTextPaint,
+        )
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -172,4 +161,6 @@ class YearGridView @JvmOverloads constructor(
         monthRects.firstOrNull { it.second.contains(x, y) }?.first
 
     internal fun monthRectsForTest(): List<Pair<YearMonth, RectF>> = monthRects.toList()
+
+    internal fun monthCountsForTest(): Map<Int, Int> = monthCounts
 }

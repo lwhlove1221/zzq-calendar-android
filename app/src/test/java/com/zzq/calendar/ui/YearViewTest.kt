@@ -109,6 +109,18 @@ class YearViewTest {
     }
 
     @Test
+    fun `month tiles show the event count without expanding days`() {
+        seed(LocalDate.of(2026, 7, 15))
+        seed(LocalDate.of(2026, 7, 16))
+        val activity = yearActivity(2026)
+
+        val grid = activity.findViewById<YearGridView>(R.id.yearGrid)
+        assertEquals(mapOf(7 to 2), grid.monthCountsForTest().filterValues { it > 0 })
+        val july = grid.monthRectsForTest().first { it.first.monthValue == 7 }.second
+        assertTrue("july tile inside grid: $july", july.bottom <= grid.height + 0.5f)
+    }
+
+    @Test
     fun `next year moves the title`() {
         val activity = yearActivity(2026)
 
