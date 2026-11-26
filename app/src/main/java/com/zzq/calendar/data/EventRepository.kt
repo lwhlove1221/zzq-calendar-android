@@ -12,6 +12,7 @@ import com.zzq.calendar.model.RRule
 import com.zzq.calendar.model.RRuleExpander
 import com.zzq.calendar.model.RepeatSpec
 import com.zzq.calendar.model.TimeZones
+import com.zzq.calendar.model.Valarm
 import com.zzq.calendar.model.WallTime
 import com.zzq.calendar.importer.IcsImporter
 import com.zzq.calendar.importer.ImportOutcome
@@ -37,6 +38,7 @@ data class EventDraft(
     val description: String = "",
     val location: String = "",
     val repeat: RepeatSpec = RepeatSpec(),
+    val valarms: List<Valarm> = emptyList(),
     val writeBack: Boolean = true,
 )
 
@@ -67,6 +69,7 @@ class EventRepository(
                 dtendWall = draft.endWall,
                 tzid = draft.tzid,
                 rruleRaw = com.zzq.calendar.data.RRuleBuilder.build(draft.repeat, draft.startWall),
+                valarms = draft.valarms,
                 writeBack = draft.writeBack,
                 createdAt = timestamp,
                 updatedAt = timestamp,

@@ -78,6 +78,7 @@ class CalendarDbHelper(
         db.execSQL("CREATE INDEX idx_exceptions_event ON event_exceptions(event_id)")
         createStaging(db)
         createConflicts(db)
+        createReminderSchedule(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -101,6 +102,7 @@ class CalendarDbHelper(
             )
             createConflicts(db)
         }
+        if (oldVersion < 4) createReminderSchedule(db)
     }
 
     /** Parse results live here until the single commit transaction moves them into `events`. */
@@ -132,8 +134,22 @@ class CalendarDbHelper(
         )
     }
 
+    /** What we handed to AlarmManager, so a later pass can diff it against the plan (PRD-05 §3.2). */
+    private fun createReminderSchedule(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS reminder_schedule (
+                key TEXT PRIMARY KEY NOT NULL,
+                fire_at INTEGER NOT NULL,
+                request_code INTEGER NOT NULL,
+                exact INTEGER NOT NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
     companion object {
         const val DEFAULT_NAME = "calendar.db"
-        const val VERSION = 3
+        const val VERSION = 4
     }
 }

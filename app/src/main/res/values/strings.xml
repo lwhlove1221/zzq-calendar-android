@@ -116,4 +116,26 @@
     <string name="delete_confirm_title">删除日程</string>
     <string name="delete_confirm_message">删除后不可恢复，确定删除吗？</string>
     <string name="delete_failed">删除失败，请重试</string>
+
+    <string name="field_reminder">提醒</string>
+    <string name="reminder_none">不提醒</string>
+    <string name="reminder_at_start">事件开始时</string>
+    <string name="reminder_5m">提前 5 分钟</string>
+    <string name="reminder_15m">提前 15 分钟</string>
+    <string name="reminder_30m">提前 30 分钟</string>
+    <string name="reminder_1h">提前 1 小时</string>
+    <string name="reminder_1d">提前 1 天</string>
+    <string name="reminder_allday_9">当天 09:00</string>
+    <string name="reminder_allday_prev20">前一天 20:00</string>
+    <string name="reminder_allday_prev9">前一天 09:00</string>
+    <string name="reminder_pick_title">提醒</string>
+    <string name="reminder_custom">提前 %1$d 分钟</string>
+    <string name="reminder_pick_done">完成</string>
+    <string name="reminder_pick_clear">无需提醒</string>
+    <string name="reminder_notify_off">已保存，但通知权限未开启，提醒不会响</string>
+    <string name="reminder_exact_off">精确闹钟未开启，提醒可能延迟</string>
+    <string name="reminder_notify_hint">通知权限未开启，提醒不会响。</string>
+    <string name="reminder_channel_name">日程提醒</string>
+    <string name="reminder_notification_text">日程即将开始</string>
+    <string name="reminder_snooze_5">稍后 5 分钟</string>
 </resources>

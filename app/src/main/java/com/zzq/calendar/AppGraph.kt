@@ -4,6 +4,7 @@ import android.content.Context
 import com.zzq.calendar.data.AndroidSystemCalendarPort
 import com.zzq.calendar.data.CalendarDbHelper
 import com.zzq.calendar.data.EventRepository
+import com.zzq.calendar.reminder.ReminderScheduler
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
@@ -14,6 +15,9 @@ object AppGraph {
 
     @Volatile
     private var repository: EventRepository? = null
+
+    @Volatile
+    private var reminderScheduler: ReminderScheduler? = null
 
     @Volatile
     var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -32,8 +36,7 @@ object AppGraph {
             if (existing != null) {
                 existing
             } else {
-                val dbHelper = CalendarDbHelper(context, databaseName)
-                helper = dbHelper
+                val dbHelper = helper ?: CalendarDbHelper(context, databaseName).also { helper = it }
                 EventRepository(
                     dbHelper,
                     ioDispatcher,
@@ -48,9 +51,21 @@ object AppGraph {
             helper?.close()
             helper = null
             repository = null
+            reminderScheduler = null
             ioDispatcher = Dispatchers.IO
             mainDispatcher = Dispatchers.Main.immediate
             databaseName = CalendarDbHelper.DEFAULT_NAME
+        }
+    }
+
+    fun reminders(context: Context): ReminderScheduler {
+        val current = reminderScheduler
+        if (current != null) return current
+        return synchronized(this) {
+            reminderScheduler ?: ReminderScheduler(
+                context.applicationContext,
+                helper ?: CalendarDbHelper(context, databaseName).also { helper = it },
+            ).also { reminderScheduler = it }
         }
     }
 }

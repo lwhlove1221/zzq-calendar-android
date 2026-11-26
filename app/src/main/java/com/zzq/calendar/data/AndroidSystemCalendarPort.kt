@@ -52,7 +52,9 @@ class AndroidSystemCalendarPort(private val context: Context) : SystemCalendarPo
         requireWrite()
         val values = values(master).apply { put(CalendarContract.Events.CALENDAR_ID, calendarId) }
         val uri = resolver.insert(CalendarContract.Events.CONTENT_URI, values) ?: return null
-        return uri.lastPathSegment?.toLongOrNull()
+        val eventId = uri.lastPathSegment?.toLongOrNull() ?: return null
+        writeReminders(eventId, master)
+        return eventId
     }
 
     override fun update(systemEventId: Long, master: EventMaster): Long? {
@@ -60,6 +62,7 @@ class AndroidSystemCalendarPort(private val context: Context) : SystemCalendarPo
         val uri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, systemEventId)
         val rows = resolver.update(uri, values(master), null, null)
         if (rows <= 0) return null
+        writeReminders(systemEventId, master)
         return lastModified(systemEventId) ?: System.currentTimeMillis()
     }
 
@@ -135,6 +138,27 @@ class AndroidSystemCalendarPort(private val context: Context) : SystemCalendarPo
 
     private fun utcMidnight(wall: LocalDateTime): Long =
         wall.toLocalDate().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+    /**
+     * PRD-05 §3.1: the app stores VALARM; the system calendar gets the same alarms as
+     * `Reminders.MINUTES` (positive = before start). For all-day events the provider's start is
+     * UTC midnight, so a "当天 09:00" offset lands at -540 minutes, which is how the platform
+     * represents it.
+     */
+    private fun writeReminders(systemEventId: Long, master: EventMaster) {
+        val uri = CalendarContract.Reminders.CONTENT_URI
+        resolver.delete(uri, CalendarContract.Reminders.EVENT_ID + " = ?", arrayOf(systemEventId.toString()))
+        master.valarms.forEach { alarm ->
+            resolver.insert(
+                uri,
+                ContentValues().apply {
+                    put(CalendarContract.Reminders.EVENT_ID, systemEventId)
+                    put(CalendarContract.Reminders.MINUTES, -(alarm.offsetSeconds / 60))
+                    put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+                },
+            )
+        }
+    }
 
     /** CalendarContract accepts `yyyyMMdd` for all-day and UTC stamps for timed events. */
     private fun exdates(master: EventMaster, zone: ZoneId): String =

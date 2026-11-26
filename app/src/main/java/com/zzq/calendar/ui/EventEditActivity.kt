@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.AdapterView
@@ -26,7 +27,10 @@ import com.zzq.calendar.export.IcsExporter
 import com.zzq.calendar.model.EventMaster
 import com.zzq.calendar.model.RRule
 import com.zzq.calendar.model.RepeatSpec
+import com.zzq.calendar.model.Valarm
 import com.zzq.calendar.model.WallTime
+import com.zzq.calendar.reminder.ReminderPlanner
+import com.zzq.calendar.reminder.ReminderScheduler
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -60,6 +64,8 @@ class EventEditActivity : AppCompatActivity() {
     private var gatePending = false
     private var pendingAction: (() -> Unit)? = null
     private var pendingDelete = false
+    private var alarms: List<Valarm> = emptyList()
+    private var alarmsTouched = false
 
     private val createIcs = registerForActivityResult(ActivityResultContracts.CreateDocument("text/calendar")) { uri ->
         uri?.let { exportCurrent(it) }
@@ -90,6 +96,9 @@ class EventEditActivity : AppCompatActivity() {
         }
     }
 
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA)
 
@@ -111,11 +120,15 @@ class EventEditActivity : AppCompatActivity() {
         binding.allDaySwitch.setOnCheckedChangeListener { _, checked ->
             allDay = checked
             normalizeAllDayRange()
+            if (!alarmsTouched) {
+                alarms = if (checked) listOf(defaultAllDayAlarm()) else emptyList()
+            }
             renderTimes()
         }
         binding.cancelButton.setOnClickListener { finish() }
         binding.saveButton.setOnClickListener { save() }
         binding.deleteButton.setOnClickListener { confirmDelete() }
+        binding.reminderButton.setOnClickListener { pickReminders() }
         binding.exportButton.setOnClickListener {
             val stamp = LocalDate.now(zone).toString()
             createIcs.launch(getString(R.string.export_ics_name, stamp))
@@ -221,6 +234,87 @@ class EventEditActivity : AppCompatActivity() {
         binding.startTimeButton.visibility = timeVisibility
         binding.endTimeButton.visibility = timeVisibility
         binding.editTimezoneHint.text = getString(R.string.timezone_hint, eventTzid)
+        renderReminders()
+    }
+
+    private fun defaultAllDayAlarm(): Valarm =
+        Valarm(ReminderPlanner.TRIGGER_CALENDAR, 9 * 3600, eventTzid)
+
+    private fun renderReminders() {
+        binding.reminderButton.text = if (alarms.isEmpty()) {
+            getString(R.string.reminder_none)
+        } else {
+            alarms.joinToString("、") { labelOf(it.offsetSeconds) }
+        }
+    }
+
+    private fun labelOf(offsetSeconds: Int): String = getString(
+        when (offsetSeconds) {
+            0 -> R.string.reminder_at_start
+            -300 -> R.string.reminder_5m
+            -900 -> R.string.reminder_15m
+            -1800 -> R.string.reminder_30m
+            -3600 -> R.string.reminder_1h
+            -86_400 -> R.string.reminder_1d
+            32_400 -> R.string.reminder_allday_9
+            -14_400 -> R.string.reminder_allday_prev20
+            -54_000 -> R.string.reminder_allday_prev9
+            else -> R.string.reminder_custom
+        },
+        if (offsetSeconds == 0) 0 else -offsetSeconds / 60,
+    )
+
+    private data class ReminderOption(val label: Int, val alarm: Valarm)
+
+    private fun reminderOptions(): List<ReminderOption> = if (allDay) {
+        listOf(
+            ReminderOption(R.string.reminder_allday_9, Valarm(ReminderPlanner.TRIGGER_CALENDAR, 32_400, eventTzid)),
+            ReminderOption(R.string.reminder_allday_prev20, Valarm(ReminderPlanner.TRIGGER_CALENDAR, -14_400, eventTzid)),
+            ReminderOption(R.string.reminder_allday_prev9, Valarm(ReminderPlanner.TRIGGER_CALENDAR, -54_000, eventTzid)),
+        )
+    } else {
+        listOf(
+            ReminderOption(R.string.reminder_at_start, Valarm("duration", 0, eventTzid)),
+            ReminderOption(R.string.reminder_5m, Valarm("duration", -300, eventTzid)),
+            ReminderOption(R.string.reminder_15m, Valarm("duration", -900, eventTzid)),
+            ReminderOption(R.string.reminder_30m, Valarm("duration", -1_800, eventTzid)),
+            ReminderOption(R.string.reminder_1h, Valarm("duration", -3_600, eventTzid)),
+            ReminderOption(R.string.reminder_1d, Valarm("duration", -86_400, eventTzid)),
+        )
+    }
+
+    private fun pickReminders() {
+        val options = reminderOptions()
+        val checked = BooleanArray(options.size) { index ->
+            alarms.any {
+                it.triggerType == options[index].alarm.triggerType &&
+                    it.offsetSeconds == options[index].alarm.offsetSeconds
+            }
+        }
+        val builder = AlertDialog.Builder(this)
+            .setTitle(R.string.reminder_pick_title)
+            .setMultiChoiceItems(options.map { getString(it.label) }.toTypedArray(), checked) { _, which, isChecked ->
+                checked[which] = isChecked
+            }
+            .setNeutralButton(R.string.reminder_pick_clear) { _, _ ->
+                alarms = emptyList()
+                alarmsTouched = true
+                renderReminders()
+            }
+            .setPositiveButton(R.string.reminder_pick_done) { _, _ ->
+                alarms = options.filterIndexed { index, _ -> checked[index] }.map { it.alarm }
+                alarmsTouched = true
+                renderReminders()
+                if (alarms.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !ReminderScheduler.notificationsAllowed(this)
+                ) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+        if (!ReminderScheduler.notificationsAllowed(this)) {
+            builder.setMessage(R.string.reminder_notify_hint)
+        }
+        builder.show()
     }
 
     private fun loadExisting(id: String) {
@@ -243,6 +337,8 @@ class EventEditActivity : AppCompatActivity() {
             end = WallTime.parse(master.dtendWall)
             originalStartDate = start.toLocalDate()
             bindRepeatSelection(master.rruleRaw)
+            alarms = master.valarms
+            alarmsTouched = true
             val ruleComplex = isRuleComplex(master)
             repeatLocked = ruleComplex
             binding.repeatSpinner.isEnabled = !ruleComplex
@@ -252,6 +348,9 @@ class EventEditActivity : AppCompatActivity() {
             renderTimes()
             binding.exportButton.visibility =
                 if (master.owner == EventMaster.OWNER_SYSTEM) View.GONE else View.VISIBLE
+            val reminderVisibility = if (master.owner == EventMaster.OWNER_SYSTEM) View.GONE else View.VISIBLE
+            binding.reminderButton.visibility = reminderVisibility
+            binding.reminderLabel.visibility = reminderVisibility
         }
     }
 
@@ -459,6 +558,7 @@ class EventEditActivity : AppCompatActivity() {
             tzid = eventTzid,
             description = binding.noteInput.text?.toString().orEmpty(),
             repeat = repeat,
+            valarms = alarms,
             writeBack = writeBack,
         )
 
@@ -492,6 +592,7 @@ class EventEditActivity : AppCompatActivity() {
                             dtendWall = endWall,
                             tzid = eventTzid,
                             rruleRaw = rruleRaw,
+                            valarms = alarms,
                             owner = if (master.owner == EventMaster.OWNER_IMPORTED) {
                                 EventMaster.OWNER_APP
                             } else {
@@ -505,6 +606,12 @@ class EventEditActivity : AppCompatActivity() {
             saving = false
             binding.saveButton.isEnabled = true
             if (result.isSuccess) {
+                AppGraph.reminders(this@EventEditActivity).reconcileAsync(force = true)
+                if (alarms.isNotEmpty() && !ReminderScheduler.notificationsAllowed(this@EventEditActivity)) {
+                    Toast.makeText(this@EventEditActivity, R.string.reminder_notify_off, Toast.LENGTH_LONG).show()
+                } else if (alarms.isNotEmpty() && !ReminderScheduler.exactAllowed(this@EventEditActivity)) {
+                    Toast.makeText(this@EventEditActivity, R.string.reminder_exact_off, Toast.LENGTH_LONG).show()
+                }
                 setResult(RESULT_OK)
                 finish()
             } else {
@@ -547,6 +654,7 @@ class EventEditActivity : AppCompatActivity() {
             val deleted = runCatching { repository.delete(id) }.getOrDefault(false)
             saving = false
             if (deleted) {
+                AppGraph.reminders(this@EventEditActivity).reconcileAsync(force = true)
                 setResult(RESULT_OK)
                 finish()
             } else {
