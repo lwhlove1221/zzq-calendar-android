@@ -74,3 +74,13 @@
 - 单测 172 条通过（新增：年视图月度计数、周视图 7 行一屏、超量折叠、200% 字号折叠、点击行进日视图）；`assembleDebug` 正常产出。
 - 真机 OPPO PHN110（1116×2484 / 520dpi）实测：年、周各一张截图，见 ZZQ-57 评论附件。
 - 未覆盖：真机深色模式目视（Robolectric 深色截图已能出图）；横屏（App 未适配横屏）。
+
+## 第 8 批：滑动手感（ZZQ-59）
+
+- `SwipePageLayout` 改为跟手：水平位移超过 touch slop 即接管手势，`page.translationX` 实时跟随手指；首 / 末页按 0.3 阻尼拉、松手回弹，单次拖动最多露出 0.6 屏。
+- 松手判定 `SwipeGesture.releaseDirection`：横向甩动速度 ≥ 700dp/s 直接翻页，否则需拖过 0.18 屏宽（且不小于 64dp）；松手动画 260ms + `DecelerateInterpolator`，未过阈值原路回弹。
+- 过渡：松手瞬间把离场页抓成半分辨率 Bitmap 覆盖层，随后离场页滑出（1.0→0.95 缩放 / 1.0→0.6 透明度），同时目标页从 0.45 屏处滑入并 0.95→1.0 / 0.6→1.0 恢复。抓图发生在重载之前，正文不会在手指下换字。
+- 四视图共用同一 `SwipePageLayout`，锚点 / 边界仍走 `CalendarRange`，未动 Tab 顺序与月视图布局。
+- `SwipeGestureTest`（8 条）：距离 / 甩动 / 纵向忽略 / 0.18 屏宽 / 260ms 落在 250–300ms；`SwipeNavigationTest`（7 条）新增「松手前页面跟手位移」；`ScreenshotTest` 新增 `renderSwipeFrames` 输出 `swipe-drag.png` / `swipe-enter.png` / `swipe-settled.png`。
+- 单测 175 条全通过，`assembleDebug` 正常产出 `app/build/outputs/apk/debug/app-debug.apk`。
+- 未执行：真机滑动与 `dumpsys gfxinfo` 掉帧率。OPPO（10.2.9.145）安装被系统「安全验证」滑块拦住，需手机上确认安装后补测。

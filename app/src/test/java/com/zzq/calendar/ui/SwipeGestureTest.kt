@@ -10,31 +10,45 @@ import org.junit.Test
 
 class SwipeGestureTest {
 
-    private val threshold = SwipeGesture.THRESHOLD_DP
+    private val density = 2f
+    private val width = 720f
 
     @Test
     fun leftDragIsNext() {
-        assertEquals(SwipeDirection.NEXT, SwipeGesture.direction(-threshold - 1f, 0f, threshold))
+        assertEquals(SwipeDirection.NEXT, release(-260f, 0f, 0f))
     }
 
     @Test
     fun rightDragIsPrevious() {
-        assertEquals(SwipeDirection.PREVIOUS, SwipeGesture.direction(threshold + 1f, 0f, threshold))
+        assertEquals(SwipeDirection.PREVIOUS, release(260f, 0f, 0f))
     }
 
     @Test
-    fun dragBelowThresholdIsIgnored() {
-        assertNull(SwipeGesture.direction(-threshold + 1f, 0f, threshold))
+    fun shortSlowDragSnapsBack() {
+        assertNull(release(-120f, 0f, 0f))
+    }
+
+    @Test
+    fun fastFlickFlipsEvenWhenShort() {
+        assertEquals(SwipeDirection.NEXT, release(-40f, 0f, -2000f))
+        assertEquals(SwipeDirection.PREVIOUS, release(40f, 0f, 2000f))
     }
 
     @Test
     fun verticalDragIsIgnored() {
-        assertNull(SwipeGesture.direction(-threshold * 3f, threshold * 4f, threshold))
+        assertNull(release(-500f, 600f, 0f))
     }
 
     @Test
-    fun pageAnimationStaysUnderTwoHundredMilliseconds() {
-        assertTrue(SwipeNavigator.ANIMATION_MS <= 200L)
+    fun flipNeedsAShareOfTheWidth() {
+        // 0.18 * 720 = 129.6dp: a 140dp drag flips, a 120dp drag does not.
+        assertEquals(SwipeDirection.NEXT, release(-140f, 0f, 0f))
+        assertNull(release(-120f, 0f, 0f))
+    }
+
+    @Test
+    fun releaseAnimationFinishesWithinThreeHundredMilliseconds() {
+        assertTrue(SwipeNavigator.ANIMATION_MS in 250L..300L)
     }
 
     @Test
@@ -50,4 +64,7 @@ class SwipeGestureTest {
         assertFalse(CalendarRange.canShiftYear(2100, SwipeDirection.NEXT))
         assertFalse(CalendarRange.canShiftYear(1900, SwipeDirection.PREVIOUS))
     }
+
+    private fun release(dx: Float, dy: Float, velocityX: Float): SwipeDirection? =
+        SwipeGesture.releaseDirection(dx * density, dy * density, velocityX * density, width * density, density)
 }
