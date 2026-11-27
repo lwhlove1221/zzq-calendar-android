@@ -42,6 +42,7 @@ class WeekActivity : AppCompatActivity() {
     private var loadGeneration = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePrefs.applyAccent(this)
         super.onCreate(savedInstanceState)
         binding = ActivityWeekBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -152,7 +153,13 @@ class WeekActivity : AppCompatActivity() {
                 text = MonthGrid.weekdayLabels[agenda.day.dayOfWeek.value - 1]
                 gravity = Gravity.CENTER
                 textSize = 11f
-                setTextColor(getColor(if (isToday) R.color.primary else R.color.on_surface_variant))
+                setTextColor(
+                    if (isToday) {
+                        themeColor(com.google.android.material.R.attr.colorPrimary)
+                    } else {
+                        getColor(R.color.on_surface_variant)
+                    },
+                )
             },
         )
         dateBlock.addView(
@@ -183,7 +190,7 @@ class WeekActivity : AppCompatActivity() {
                 TextView(this).apply {
                     text = getString(R.string.week_more_events, instances.size - maxEventLines)
                     textSize = 11f
-                    setTextColor(getColor(R.color.primary))
+                    setTextColor(themeColor(com.google.android.material.R.attr.colorPrimary))
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
                 },

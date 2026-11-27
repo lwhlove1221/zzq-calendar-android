@@ -37,7 +37,7 @@ class YearGridView @JvmOverloads constructor(
     }
     private val countTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         setTextSize(15f * dpScale)
-        color = ContextCompat.getColor(context, R.color.primary)
+        color = context.themeColor(com.google.android.material.R.attr.colorPrimary)
         textAlign = Paint.Align.CENTER
     }
     private val emptyTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -51,12 +51,12 @@ class YearGridView @JvmOverloads constructor(
         strokeWidth = 1f * dpScale
     }
     private val currentMonthStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.primary)
+        color = context.themeColor(com.google.android.material.R.attr.colorPrimary)
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * dpScale
     }
     private val currentMonthPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = ContextCompat.getColor(context, R.color.today_tint)
+        color = context.themeColor(com.google.android.material.R.attr.colorPrimaryContainer)
         style = Paint.Style.FILL
     }
 
@@ -118,10 +118,11 @@ class YearGridView @JvmOverloads constructor(
         val countSize = countTextPaint.textSize
         val gap = 8f * dpScale
         val firstBaseline = rect.centerY() - (monthSize + gap + countSize) / 2f + monthSize
-        monthTextPaint.color = ContextCompat.getColor(
-            context,
-            if (isCurrentMonth) R.color.primary else R.color.on_surface,
-        )
+        monthTextPaint.color = if (isCurrentMonth) {
+            context.themeColor(com.google.android.material.R.attr.colorPrimary)
+        } else {
+            ContextCompat.getColor(context, R.color.on_surface)
+        }
         canvas.drawText(
             context.getString(R.string.year_month_label, month.monthValue),
             rect.centerX(),

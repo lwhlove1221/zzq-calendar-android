@@ -3,18 +3,22 @@
     <color name="surface">#121212</color>
     <color name="on_surface">#EDEDED</color>
     <color name="on_surface_variant">#C9C9C9</color>
-    <color name="primary">#9BC1F0</color>
-    <color name="on_primary">#0A2540</color>
-    <color name="event_blue">#2A5A96</color>
-    <color name="on_event_blue">#FFFFFF</color>
-    <color name="all_day_bg">#24384F</color>
-    <color name="on_all_day_bg">#D6E6F8</color>
     <color name="grid_line">#2E2E2E</color>
     <color name="hour_text">#BDBDBD</color>
     <color name="current_time">#FF8276</color>
-    <color name="fab_bg">#9BC1F0</color>
-    <color name="on_fab_bg">#0A2540</color>
     <color name="error">#FFB4AB</color>
-    <color name="today_tint">#1F9BC1F0</color>
     <color name="today_red_tint">#33FF8276</color>
+
+    <color name="accent_blue">#9BC1F0</color>
+    <color name="on_accent_blue">#0A2540</color>
+    <color name="accent_soft_blue">#24384F</color>
+    <color name="on_accent_soft_blue">#D6E6F8</color>
+    <color name="accent_green">#7FD8B0</color>
+    <color name="on_accent_green">#04251A</color>
+    <color name="accent_soft_green">#1E3A2C</color>
+    <color name="on_accent_soft_green">#CDEBD9</color>
+    <color name="accent_purple">#C6B4F5</color>
+    <color name="on_accent_purple">#1B0F33</color>
+    <color name="accent_soft_purple">#332A47</color>
+    <color name="on_accent_soft_purple">#DED1FA</color>
 </resources>

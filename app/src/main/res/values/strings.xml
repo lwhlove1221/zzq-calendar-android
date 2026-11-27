@@ -30,6 +30,17 @@
     <string name="tab_month">月</string>
     <string name="tab_week">周</string>
     <string name="tab_year">年</string>
+    <string name="settings">设置</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_data">数据</string>
+    <string name="theme_mode">明暗</string>
+    <string name="theme_follow_system">跟随系统</string>
+    <string name="theme_light">浅色</string>
+    <string name="theme_dark">深色</string>
+    <string name="accent_color">强调色</string>
+    <string name="accent_blue">蓝</string>
+    <string name="accent_green">绿</string>
+    <string name="accent_purple">紫</string>
     <string name="week_previous">上一周</string>
     <string name="week_next">下一周</string>
     <string name="week_title">%1$d年%2$d月%3$d日 – %4$d月%5$d日</string>

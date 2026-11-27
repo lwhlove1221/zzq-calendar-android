@@ -20,6 +20,7 @@ object CalendarTabs {
         WEEK(R.string.tab_week),
         MONTH(R.string.tab_month),
         YEAR(R.string.tab_year),
+        SETTINGS(R.string.settings),
     }
 
     fun attach(
@@ -44,6 +45,7 @@ object CalendarTabs {
                             MonthActivity.monthIntent(activity, YearMonth.from(anchor())),
                         )
                         Tab.YEAR -> activity.startActivity(YearActivity.yearIntent(activity, anchor().year))
+                        Tab.SETTINGS -> activity.startActivity(SettingsActivity.intent(activity))
                     }
                     activity.finish()
                 },
@@ -67,10 +69,11 @@ object CalendarTabs {
         gravity = Gravity.CENTER
         textSize = 14f
         setTextColor(
-            ContextCompat.getColor(
-                activity,
-                if (selected) R.color.primary else R.color.on_surface_variant,
-            ),
+            if (selected) {
+                activity.themeColor(com.google.android.material.R.attr.colorPrimary)
+            } else {
+                ContextCompat.getColor(activity, R.color.on_surface_variant)
+            },
         )
         if (selected) setTypeface(typeface, Typeface.BOLD)
         isSelected = selected
