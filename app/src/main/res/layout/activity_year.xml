@@ -47,11 +47,16 @@
     <com.zzq.calendar.ui.YearGridView
         android:id="@+id/yearGrid"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="wrap_content"
+        android:paddingTop="@dimen/spacing_small"
         android:paddingStart="@dimen/screen_padding"
         android:paddingEnd="@dimen/screen_padding"
         android:paddingBottom="@dimen/spacing_small" />
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
     <LinearLayout
         android:id="@+id/tabBar"

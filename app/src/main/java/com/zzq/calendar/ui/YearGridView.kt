@@ -27,7 +27,7 @@ class YearGridView @JvmOverloads constructor(
     var onMonthClick: ((YearMonth) -> Unit)? = null
 
     private val dpScale = resources.displayMetrics.density
-    private val cellGap = 6f * dpScale
+    private val cellGap = 10f * dpScale
 
     private val monthTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         setTextSize(24f * dpScale)
@@ -81,7 +81,7 @@ class YearGridView @JvmOverloads constructor(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = resolveSize(suggestedMinimumWidth, widthMeasureSpec)
-        val desiredHeight = (4 * 120 * dpScale).toInt() + paddingTop + paddingBottom
+        val desiredHeight = (4 * CARD_HEIGHT_DP * dpScale + 3 * cellGap).toInt() + paddingTop + paddingBottom
         setMeasuredDimension(width, resolveSize(desiredHeight, heightMeasureSpec))
     }
 
@@ -159,6 +159,10 @@ class YearGridView @JvmOverloads constructor(
 
     internal fun monthAt(x: Float, y: Float): YearMonth? =
         monthRects.firstOrNull { it.second.contains(x, y) }?.first
+
+    private companion object {
+        const val CARD_HEIGHT_DP = 96f
+    }
 
     internal fun monthRectsForTest(): List<Pair<YearMonth, RectF>> = monthRects.toList()
 
